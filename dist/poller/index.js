@@ -35,6 +35,13 @@ const FETCH_TIMEOUT_MS = 10000;
 const isARealObject = (value) => {
     return typeof value === 'object' && value !== null;
 };
+/**
+ * Checks if input is a string or null.
+ * Used for validating optional string fields in state.
+ */
+const isStringOrNull = (value) => {
+    return value === null || typeof value === 'string';
+};
 
 ;// CONCATENATED MODULE: ./src/github.ts
 /**
@@ -513,9 +520,16 @@ function isValidState(obj) {
     if (typeof obj['poll_failures'] !== 'number') {
         return false;
     }
-    // Optional fields have defaults in the type
-    // stopped_at_ts: string | null
-    // last_error: string | null
+    // Optional fields: must be string | null
+    if (!isStringOrNull(obj['stopped_at_ts'])) {
+        return false;
+    }
+    if (!isStringOrNull(obj['poller_started_at_ts'])) {
+        return false;
+    }
+    if (!isStringOrNull(obj['last_error'])) {
+        return false;
+    }
     return true;
 }
 // -----------------------------------------------------------------------------

@@ -239,8 +239,8 @@ A heartbeat mechanism could detect stuck pollers mid-job, not just at shutdown. 
 
 | Priority | Issue | Status |
 |----------|-------|--------|
-| P2 | Missing test for startup verification timeout path | TODO |
-| P2 | `isValidState()` doesn't validate `poller_started_at_ts`, `stopped_at_ts`, or `last_error` types | TODO |
+| P2 | Missing test for startup verification timeout path | **DONE** |
+| P2 | `isValidState()` doesn't validate `poller_started_at_ts`, `stopped_at_ts`, or `last_error` types | **DONE** |
 | P3 | Consider max lifetime for defense-in-depth | Future |
 | P3 | Consider making timeout constants configurable | Future |
 

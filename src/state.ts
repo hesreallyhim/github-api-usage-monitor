@@ -156,9 +156,16 @@ export function isValidState(obj: unknown): obj is ReducerState {
     return false;
   }
 
-  // Optional fields have defaults in the type
-  // stopped_at_ts: string | null
-  // last_error: string | null
+  // Optional fields: must be string | null
+  if (!isStringOrNull(obj['stopped_at_ts'])) {
+    return false;
+  }
+  if (!isStringOrNull(obj['poller_started_at_ts'])) {
+    return false;
+  }
+  if (!isStringOrNull(obj['last_error'])) {
+    return false;
+  }
 
   return true;
 }
@@ -168,7 +175,7 @@ export function isValidState(obj: unknown): obj is ReducerState {
 // -----------------------------------------------------------------------------
 
 import { getPidPath } from './paths';
-import { isARealObject } from './utils';
+import { isARealObject, isStringOrNull } from './utils';
 
 /**
  * Writes the poller PID to disk.

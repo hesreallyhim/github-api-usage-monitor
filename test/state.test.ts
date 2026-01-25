@@ -26,6 +26,7 @@ function makeState(overrides: Partial<ReducerState> = {}): ReducerState {
     buckets: {},
     started_at_ts: '2026-01-25T12:00:00.000Z',
     stopped_at_ts: null,
+    poller_started_at_ts: null,
     interval_seconds: 30,
     poll_count: 0,
     poll_failures: 0,
@@ -195,7 +196,37 @@ describe('isValidState', () => {
   it('accepts valid state with optional fields', () => {
     const state = makeState({
       stopped_at_ts: '2026-01-25T13:00:00.000Z',
+      poller_started_at_ts: '2026-01-25T12:00:01.000Z',
       last_error: 'Some error',
+    });
+    expect(isValidState(state)).toBe(true);
+  });
+
+  it('returns false for invalid optional field types', () => {
+    // stopped_at_ts must be string | null
+    expect(isValidState({
+      ...makeState(),
+      stopped_at_ts: 12345,
+    })).toBe(false);
+
+    // poller_started_at_ts must be string | null
+    expect(isValidState({
+      ...makeState(),
+      poller_started_at_ts: { invalid: 'object' },
+    })).toBe(false);
+
+    // last_error must be string | null
+    expect(isValidState({
+      ...makeState(),
+      last_error: ['array', 'not', 'allowed'],
+    })).toBe(false);
+  });
+
+  it('accepts null values for optional fields', () => {
+    const state = makeState({
+      stopped_at_ts: null,
+      poller_started_at_ts: null,
+      last_error: null,
     });
     expect(isValidState(state)).toBe(true);
   });

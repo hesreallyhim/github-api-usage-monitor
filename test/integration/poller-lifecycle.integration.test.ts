@@ -10,7 +10,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 
 const POLLER_SCRIPT = path.resolve(__dirname, '../../dist/poller/index.js');
 
@@ -158,6 +158,93 @@ describe('Poller Lifecycle Integration', () => {
     // Wait for OS to clean up
     await sleep(100);
     expect(isProcessRunning(pid)).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Startup verification timeout tests
+// -----------------------------------------------------------------------------
+
+describe('verifyPollerStartup timeout', () => {
+  let testStateDir: string;
+  let originalRunnerTemp: string | undefined;
+
+  beforeEach(() => {
+    originalRunnerTemp = process.env['RUNNER_TEMP'];
+    testStateDir = fs.mkdtempSync(path.join('/tmp', 'startup-timeout-test-'));
+    process.env['RUNNER_TEMP'] = testStateDir;
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    // Restore original env
+    if (originalRunnerTemp !== undefined) {
+      process.env['RUNNER_TEMP'] = originalRunnerTemp;
+    } else {
+      delete process.env['RUNNER_TEMP'];
+    }
+
+    // Clean up test directory
+    if (testStateDir) {
+      fs.rmSync(testStateDir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns error when poller never signals startup', async () => {
+    // Import verifyPollerStartup after setting up env
+    const { verifyPollerStartup } = await import('../../src/state');
+    const { getStateDir, getStatePath } = await import('../../src/paths');
+
+    // Create state directory and file WITHOUT poller_started_at_ts set
+    const stateDir = getStateDir();
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    const stateWithoutStartup = {
+      buckets: {},
+      started_at_ts: new Date().toISOString(),
+      stopped_at_ts: null,
+      poller_started_at_ts: null, // Never set - simulates failed startup
+      interval_seconds: 30,
+      poll_count: 0,
+      poll_failures: 0,
+      last_error: null,
+    };
+    fs.writeFileSync(getStatePath(), JSON.stringify(stateWithoutStartup), 'utf-8');
+
+    // Verify timeout with short timeout (200ms)
+    const result = await verifyPollerStartup(200);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('did not signal startup within');
+      expect(result.error).toContain('200ms');
+    }
+  });
+
+  it('returns success when poller_started_at_ts is set', async () => {
+    const { verifyPollerStartup } = await import('../../src/state');
+    const { getStateDir, getStatePath } = await import('../../src/paths');
+
+    const stateDir = getStateDir();
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    // Create state WITH poller_started_at_ts set
+    const stateWithStartup = {
+      buckets: {},
+      started_at_ts: new Date().toISOString(),
+      stopped_at_ts: null,
+      poller_started_at_ts: new Date().toISOString(), // Set - simulates successful startup
+      interval_seconds: 30,
+      poll_count: 0,
+      poll_failures: 0,
+      last_error: null,
+    };
+    fs.writeFileSync(getStatePath(), JSON.stringify(stateWithStartup), 'utf-8');
+
+    // Should succeed immediately
+    const result = await verifyPollerStartup(1000);
+
+    expect(result.success).toBe(true);
   });
 });
 

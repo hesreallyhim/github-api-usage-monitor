@@ -46,6 +46,8 @@ export interface ReducerState {
     started_at_ts: string;
     /** ISO timestamp when monitoring stopped (null if still running) */
     stopped_at_ts: string | null;
+    /** ISO timestamp when poller process started (null before poller runs) */
+    poller_started_at_ts: string | null;
     /** Polling interval in seconds */
     interval_seconds: number;
     /** Total number of successful polls */
@@ -79,3 +81,5 @@ export declare const POLL_INTERVAL_SECONDS = 30;
 export declare const STATE_DIR_NAME = "github-api-usage-monitor";
 export declare const STATE_FILE_NAME = "state.json";
 export declare const PID_FILE_NAME = "poller.pid";
+/** Timeout for fetch requests to GitHub API (milliseconds) */
+export declare const FETCH_TIMEOUT_MS = 10000;
