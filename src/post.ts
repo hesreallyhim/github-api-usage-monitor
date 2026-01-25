@@ -14,7 +14,7 @@
 import * as core from '@actions/core';
 import type { SummaryData } from './types';
 import { isSupported } from './platform';
-import { killPoller } from './poller';
+import { killPollerWithVerification } from './poller';
 import { readState, writeState, readPid, removePid } from './state';
 import { markStopped } from './reducer';
 import { render, writeStepSummary, generateWarnings } from './output';
@@ -23,9 +23,9 @@ import { render, writeStepSummary, generateWarnings } from './output';
 // Post entry point
 // -----------------------------------------------------------------------------
 
-function run(): void {
+async function run(): Promise<void> {
   try {
-    handlePost();
+    await handlePost();
   } catch (error) {
     const err = error as Error;
     core.setFailed(err.message);
@@ -36,7 +36,7 @@ function run(): void {
 // Post handler (cleanup and report)
 // -----------------------------------------------------------------------------
 
-function handlePost(): void {
+async function handlePost(): Promise<void> {
   core.info('Stopping GitHub API usage monitor...');
 
   const warnings: string[] = [];
@@ -47,16 +47,18 @@ function handlePost(): void {
     warnings.push(`Unsupported platform: ${platformInfo.reason}`);
   }
 
-  // Read PID and kill poller
+  // Read PID and kill poller with verification
   const pid = readPid();
   if (pid) {
-    const killResult = killPoller(pid);
+    const killResult = await killPollerWithVerification(pid);
     if (!killResult.success) {
       if (killResult.notFound) {
         warnings.push('Poller process not found (may have exited)');
       } else {
         warnings.push(`Failed to kill poller: ${killResult.error}`);
       }
+    } else if (killResult.escalated) {
+      warnings.push('Poller required SIGKILL (did not respond to SIGTERM)');
     }
     removePid();
   } else {

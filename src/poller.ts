@@ -86,6 +86,8 @@ export function spawnPoller(token: string): SpawnOutcome {
 
 export interface KillResult {
   success: true;
+  /** True if SIGKILL was needed after SIGTERM timeout */
+  escalated?: boolean;
 }
 
 export interface KillError {
@@ -96,6 +98,9 @@ export interface KillError {
 }
 
 export type KillOutcome = KillResult | KillError;
+
+const KILL_TIMEOUT_MS = 3000;
+const KILL_CHECK_INTERVAL_MS = 100;
 
 /**
  * Kills the poller process by PID.
@@ -127,6 +132,66 @@ export function killPoller(pid: number): KillOutcome {
       notFound: false,
     };
   }
+}
+
+/**
+ * Kills poller with verification and SIGKILL escalation.
+ * Sends SIGTERM, waits for exit, escalates to SIGKILL if needed.
+ */
+export async function killPollerWithVerification(pid: number): Promise<KillOutcome> {
+  // Check if process exists
+  if (!isProcessRunning(pid)) {
+    return { success: false, error: 'Process not found', notFound: true };
+  }
+
+  // Send SIGTERM
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch (err) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code === 'ESRCH') {
+      return { success: false, error: 'Process not found', notFound: true };
+    }
+    return { success: false, error: `Failed to send SIGTERM: ${error.message}`, notFound: false };
+  }
+
+  // Wait for process to die
+  const startTime = Date.now();
+  while (Date.now() - startTime < KILL_TIMEOUT_MS) {
+    await sleep(KILL_CHECK_INTERVAL_MS);
+    if (!isProcessRunning(pid)) {
+      return { success: true, escalated: false };
+    }
+  }
+
+  // Escalate to SIGKILL
+  try {
+    process.kill(pid, 'SIGKILL');
+    await sleep(KILL_CHECK_INTERVAL_MS);
+    if (!isProcessRunning(pid)) {
+      return { success: true, escalated: true };
+    }
+    return { success: false, error: 'Process survived SIGKILL', notFound: false };
+  } catch (err) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code === 'ESRCH') {
+      return { success: true, escalated: true }; // Died between check and kill
+    }
+    return { success: false, error: `Failed to send SIGKILL: ${error.message}`, notFound: false };
+  }
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // -----------------------------------------------------------------------------
@@ -187,13 +252,6 @@ async function performPoll(state: ReducerState, token: string): Promise<ReducerS
   const { state: newState } = reduce(state, result.data, timestamp);
   writeState(newState);
   return newState;
-}
-
-/**
- * Sleep helper.
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // -----------------------------------------------------------------------------

@@ -624,6 +624,8 @@ function spawnPoller(token) {
         return { success: false, error: `Failed to spawn poller: ${error.message}` };
     }
 }
+const KILL_TIMEOUT_MS = 3000;
+const KILL_CHECK_INTERVAL_MS = 100;
 /**
  * Kills the poller process by PID.
  * Sends SIGTERM for graceful shutdown.
@@ -653,6 +655,63 @@ function killPoller(pid) {
             notFound: false,
         };
     }
+}
+/**
+ * Kills poller with verification and SIGKILL escalation.
+ * Sends SIGTERM, waits for exit, escalates to SIGKILL if needed.
+ */
+async function killPollerWithVerification(pid) {
+    // Check if process exists
+    if (!isProcessRunning(pid)) {
+        return { success: false, error: 'Process not found', notFound: true };
+    }
+    // Send SIGTERM
+    try {
+        process.kill(pid, 'SIGTERM');
+    }
+    catch (err) {
+        const error = err;
+        if (error.code === 'ESRCH') {
+            return { success: false, error: 'Process not found', notFound: true };
+        }
+        return { success: false, error: `Failed to send SIGTERM: ${error.message}`, notFound: false };
+    }
+    // Wait for process to die
+    const startTime = Date.now();
+    while (Date.now() - startTime < KILL_TIMEOUT_MS) {
+        await sleep(KILL_CHECK_INTERVAL_MS);
+        if (!isProcessRunning(pid)) {
+            return { success: true, escalated: false };
+        }
+    }
+    // Escalate to SIGKILL
+    try {
+        process.kill(pid, 'SIGKILL');
+        await sleep(KILL_CHECK_INTERVAL_MS);
+        if (!isProcessRunning(pid)) {
+            return { success: true, escalated: true };
+        }
+        return { success: false, error: 'Process survived SIGKILL', notFound: false };
+    }
+    catch (err) {
+        const error = err;
+        if (error.code === 'ESRCH') {
+            return { success: true, escalated: true }; // Died between check and kill
+        }
+        return { success: false, error: `Failed to send SIGKILL: ${error.message}`, notFound: false };
+    }
+}
+function isProcessRunning(pid) {
+    try {
+        process.kill(pid, 0);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 // -----------------------------------------------------------------------------
 // Poller main loop (when run as child process)
@@ -702,12 +761,6 @@ async function performPoll(state, token) {
     const { state: newState } = reduce(state, result.data, timestamp);
     writeState(newState);
     return newState;
-}
-/**
- * Sleep helper.
- */
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 // -----------------------------------------------------------------------------
 // Child process entry point
