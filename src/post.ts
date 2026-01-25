@@ -23,9 +23,9 @@ import { render, writeStepSummary, generateWarnings } from './output';
 // Post entry point
 // -----------------------------------------------------------------------------
 
-async function run(): Promise<void> {
+function run(): void {
   try {
-    await handlePost();
+    handlePost();
   } catch (error) {
     const err = error as Error;
     core.setFailed(err.message);
@@ -36,7 +36,7 @@ async function run(): Promise<void> {
 // Post handler (cleanup and report)
 // -----------------------------------------------------------------------------
 
-async function handlePost(): Promise<void> {
+function handlePost(): void {
   core.info('Stopping GitHub API usage monitor...');
 
   const warnings: string[] = [];
