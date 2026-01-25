@@ -1,0 +1,388 @@
+{
+  "spec_version": "1.0",
+  "spec_id": "github-api-usage-monitor",
+  "title": "github-api-usage-monitor v1",
+  "canonical_date": "2026-01-25",
+  "status": "ready_for_implementation",
+  "principles": [
+    "SRP",
+    "SoC",
+    "DIP",
+    "contract_first",
+    "spec_first_two_way"
+  ],
+  "repo_protocol": {
+    "design_state_machine": ["CLEAN", "DIRTY", "BLOCKED"],
+    "public_surface": "declared_ports_and_boundary_types_only",
+    "layer_codeowners_required": false
+  },
+  "prd": {
+    "version": "1.0.0",
+    "summary": "A GitHub Action that polls the /rate_limit endpoint at a fixed interval during a job, maintaining a constant-space aggregator to estimate primary rate-limit consumption by bucket. Replaces snapshot-diff approach with a job-long monitor for reliable, bucket-level API usage accounting.",
+    "scope_boundary": {
+      "in_scope": [
+        "Reliable bucket-level accounting of primary rate-limit usage during a job (hour- and minute-buckets)",
+        "Correctness across reset boundaries (fixed-duration windows anchored at first use per bucket)",
+        "Minimal user friction: two workflow steps (start, stop) with sane defaults",
+        "Clear, actionable output: per-bucket totals, warnings, remaining quota, next reset time",
+        "Safe by design: no token leakage in logs, conservative polling cadence",
+        "Linux/macOS GitHub-hosted runners"
+      ],
+      "out_of_scope": [
+        "Per-request endpoint tracing (URL/method)",
+        "Per-step attribution",
+        "Secondary rate-limit diagnostics (burstiness, concurrency, abuse heuristics)",
+        "Strong guarantees on job cancellation/runner crash (partial results acceptable)",
+        "Windows support",
+        "Job-level container support",
+        "Self-hosted runner support"
+      ]
+    },
+    "steel_thread_acceptance": [
+      "mode=start spawns a background poller that persists across workflow steps",
+      "Poller polls /rate_limit every 30 seconds and updates constant-space reducer state",
+      "mode=stop terminates poller and produces summary in step summary + console",
+      "Summary shows per-bucket usage totals, windows crossed, remaining quota, reset times",
+      "Warnings are emitted for poll failures, anomalies, and unsupported environments",
+      "Token is never printed to logs"
+    ]
+  },
+  "requirements": {
+    "functional": [
+      {
+        "id": "F1",
+        "priority": "must",
+        "statement": "Start mode spawns poller and returns success if started",
+        "notes": "Validates environment (Linux/macOS) before spawning"
+      },
+      {
+        "id": "F2",
+        "priority": "must",
+        "statement": "Stop mode terminates poller and prints summary even if poller not running",
+        "notes": "Best-effort output; run with always() condition"
+      },
+      {
+        "id": "F3",
+        "priority": "must",
+        "statement": "Accept token input; default to github.token / GITHUB_TOKEN if present",
+        "notes": "Never print token; avoid shell debug that echoes headers"
+      },
+      {
+        "id": "F4",
+        "priority": "must",
+        "statement": "Poll /rate_limit at 30-second intervals",
+        "notes": "Immediate initial poll on startup for baseline + token validation"
+      },
+      {
+        "id": "F5",
+        "priority": "must",
+        "statement": "Persist state to $RUNNER_TEMP paths for cross-step access",
+        "notes": "State at $RUNNER_TEMP/github-api-usage-monitor/state.json; PID at poller.pid"
+      },
+      {
+        "id": "F6",
+        "priority": "must",
+        "statement": "Track all rate-limit buckets returned by /rate_limit API",
+        "notes": "User configures which buckets to report (v1: report all with usage)"
+      },
+      {
+        "id": "F7",
+        "priority": "must",
+        "statement": "Handle reset boundaries by including used count immediately after reset change",
+        "notes": "Minimizes undercount; post-reset used reflects consumption since new window"
+      },
+      {
+        "id": "F8",
+        "priority": "must",
+        "statement": "Detect anomalies when used decreases without reset change",
+        "notes": "Increment anomaly counter; do not subtract from totals; emit warning"
+      },
+      {
+        "id": "F9",
+        "priority": "should",
+        "statement": "Periodically write state file for durability during long-running polls",
+        "notes": "Best-effort data preservation on unexpected termination"
+      },
+      {
+        "id": "F10",
+        "priority": "should",
+        "statement": "Output summary to GitHub step summary ($GITHUB_STEP_SUMMARY) and console",
+        "notes": "Table sorted by total_used desc; one-line console summary + top 3 buckets"
+      }
+    ],
+    "non_functional": [
+      {
+        "id": "NF1",
+        "category": "security",
+        "statement": "No secrets in logs",
+        "measurement": "Token never appears in stdout/stderr; no set -x; use GitHub masking"
+      },
+      {
+        "id": "NF2",
+        "category": "reliability",
+        "statement": "Poller process survives step boundaries on Linux/macOS GitHub-hosted runners",
+        "measurement": "Detached process with unref(); PID-based lifecycle management"
+      },
+      {
+        "id": "NF3",
+        "category": "performance",
+        "statement": "Constant-space reducer with O(#buckets) per poll",
+        "measurement": "State file remains small; minimal log volume"
+      },
+      {
+        "id": "NF4",
+        "category": "maintainability",
+        "statement": "Deterministic reducer behavior with unit-testable pure functions",
+        "measurement": "Table-driven tests for all reducer edge cases"
+      }
+    ],
+    "out_of_scope_steel_thread": [
+      "Optional JSONL time series artifact",
+      "Windows support",
+      "Endpoint tracing (opt-in)",
+      "Step correlation (timestamp markers)"
+    ]
+  },
+  "layers": [
+    {
+      "id": "action",
+      "name": "Action Entry Layer",
+      "description": "GitHub Action entry point dispatching start/stop modes",
+      "modules": [
+        {
+          "id": "main",
+          "name": "Main Entry",
+          "paths": ["src/main.ts"],
+          "provided_ports": [],
+          "required_ports": ["poller.spawn", "poller.kill", "state.read", "output.render"]
+        }
+      ]
+    },
+    {
+      "id": "poller",
+      "name": "Poller Layer",
+      "description": "Background process that polls /rate_limit and updates state",
+      "modules": [
+        {
+          "id": "poller",
+          "name": "Poller Process",
+          "paths": ["src/poller.ts"],
+          "provided_ports": ["poller.spawn", "poller.kill"],
+          "required_ports": ["github.fetchRateLimit", "reducer.update", "state.write"]
+        }
+      ]
+    },
+    {
+      "id": "core",
+      "name": "Core Logic Layer",
+      "description": "Pure business logic for rate-limit reduction and state management",
+      "modules": [
+        {
+          "id": "reducer",
+          "name": "Reducer",
+          "paths": ["src/reducer.ts"],
+          "provided_ports": ["reducer.update", "reducer.initBucket"],
+          "required_ports": [],
+          "boundary_types": ["ReducerState", "BucketState", "RateLimitSample"]
+        },
+        {
+          "id": "state",
+          "name": "State Manager",
+          "paths": ["src/state.ts"],
+          "provided_ports": ["state.read", "state.write"],
+          "required_ports": ["paths.statePath"],
+          "boundary_types": ["ReducerState"]
+        }
+      ]
+    },
+    {
+      "id": "infra",
+      "name": "Infrastructure Layer",
+      "description": "External integrations and platform-specific code",
+      "modules": [
+        {
+          "id": "github",
+          "name": "GitHub API Client",
+          "paths": ["src/github.ts"],
+          "provided_ports": ["github.fetchRateLimit"],
+          "required_ports": [],
+          "boundary_types": ["RateLimitResponse"]
+        },
+        {
+          "id": "output",
+          "name": "Output Renderer",
+          "paths": ["src/output.ts"],
+          "provided_ports": ["output.render"],
+          "required_ports": [],
+          "boundary_types": ["SummaryData"]
+        },
+        {
+          "id": "paths",
+          "name": "Path Resolver",
+          "paths": ["src/paths.ts"],
+          "provided_ports": ["paths.statePath", "paths.pidPath"],
+          "required_ports": []
+        },
+        {
+          "id": "platform",
+          "name": "Platform Detection",
+          "paths": ["src/platform.ts"],
+          "provided_ports": ["platform.isSupported", "platform.detect"],
+          "required_ports": []
+        }
+      ]
+    }
+  ],
+  "boundary_types": [
+    {
+      "id": "ReducerState",
+      "description": "Global reducer state persisted to state.json",
+      "fields": [
+        "buckets: Record<string, BucketState>",
+        "started_at_ts: string (ISO)",
+        "stopped_at_ts: string | null (ISO)",
+        "interval_seconds: number",
+        "poll_count: number",
+        "poll_failures: number",
+        "last_error: string | null"
+      ]
+    },
+    {
+      "id": "BucketState",
+      "description": "Per-bucket reducer state",
+      "fields": [
+        "last_reset: number (epoch)",
+        "last_used: number",
+        "total_used: number",
+        "windows_crossed: number",
+        "anomalies: number",
+        "last_seen_ts: string (ISO)",
+        "limit: number",
+        "remaining: number"
+      ]
+    },
+    {
+      "id": "RateLimitSample",
+      "description": "Single sample from /rate_limit for one bucket",
+      "fields": [
+        "limit: number",
+        "used: number",
+        "remaining: number",
+        "reset: number (epoch)"
+      ]
+    },
+    {
+      "id": "RateLimitResponse",
+      "description": "Full response from GET /rate_limit",
+      "fields": [
+        "resources: Record<string, RateLimitSample>",
+        "rate: RateLimitSample (deprecated alias for core)"
+      ]
+    },
+    {
+      "id": "SummaryData",
+      "description": "Data passed to output renderer for summary generation",
+      "fields": [
+        "state: ReducerState",
+        "duration_seconds: number",
+        "warnings: string[]"
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Core Logic",
+      "description": "Implement reducer, state manager, and GitHub client",
+      "exit_criteria": [
+        "Reducer handles same-reset deltas correctly",
+        "Reducer handles reset-boundary transitions",
+        "Reducer detects and counts anomalies",
+        "State read/write with atomic rename",
+        "GitHub client fetches and parses /rate_limit"
+      ]
+    },
+    {
+      "id": "M2",
+      "name": "Action Integration",
+      "description": "Implement start/stop modes and process lifecycle",
+      "exit_criteria": [
+        "mode=start spawns detached poller and writes PID",
+        "mode=stop kills poller by PID and renders summary",
+        "Platform detection fails fast on unsupported OS",
+        "Initial poll on startup validates token"
+      ]
+    },
+    {
+      "id": "M3",
+      "name": "Testing",
+      "description": "Unit tests and integration tests",
+      "exit_criteria": [
+        "Table-driven reducer tests cover all edge cases",
+        "Fixture-based parsing tests for /rate_limit payloads",
+        "Self-test workflow runs on ubuntu-latest and macos-latest"
+      ]
+    },
+    {
+      "id": "M4",
+      "name": "Release",
+      "description": "Build, bundle, and release automation",
+      "exit_criteria": [
+        "ncc bundles action to dist/",
+        "CI/CD pipeline runs lint, test, build",
+        "action.yml correctly references dist/main.js"
+      ]
+    }
+  ],
+  "tasks": [],
+  "risks": [
+    {
+      "id": "R1",
+      "category": "process",
+      "description": "Orphan process if stop step does not run on job cancel",
+      "mitigation": "Acceptable for v1; poller dies when job VM is torn down"
+    },
+    {
+      "id": "R2",
+      "category": "process",
+      "description": "PID not found or stale PID at stop time",
+      "mitigation": "Handle gracefully; emit warning; proceed with available state"
+    },
+    {
+      "id": "R3",
+      "category": "platform",
+      "description": "Background process behavior differs across runner types",
+      "mitigation": "Explicitly scope v1 to GitHub-hosted Linux/macOS only"
+    },
+    {
+      "id": "R4",
+      "category": "platform",
+      "description": "Windows process model differences",
+      "mitigation": "Detect and fail-fast with clear unsupported-platform message"
+    },
+    {
+      "id": "R5",
+      "category": "api",
+      "description": "/rate_limit transient failures",
+      "mitigation": "Count failures; show warning; proceed; no retry in v1"
+    },
+    {
+      "id": "R6",
+      "category": "api",
+      "description": "Secondary rate limit if /rate_limit polled too aggressively",
+      "mitigation": "Use 30s interval; document minimum"
+    },
+    {
+      "id": "R7",
+      "category": "correctness",
+      "description": "Reset boundary happens between polls causing missed data",
+      "mitigation": "Bounded error by interval; include post-reset used to reduce undercount"
+    },
+    {
+      "id": "R8",
+      "category": "correctness",
+      "description": "Token context changes mid-job causing unexpected used decreases",
+      "mitigation": "Record anomaly; do not subtract from totals; warn in summary"
+    }
+  ]
+}

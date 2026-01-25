@@ -1,0 +1,39 @@
+%% github-api-usage-monitor v1 — Reducer Algorithm
+%% Generated from spec/spec.json
+
+flowchart TD
+    start([Poll received]) --> parse[Parse /rate_limit response]
+    parse --> each_bucket{For each bucket}
+
+    each_bucket --> check_init{Bucket initialized?}
+
+    check_init -->|No| init[Initialize bucket state<br/>last_reset = reset<br/>last_used = used]
+    init --> next_bucket
+
+    check_init -->|Yes| check_reset{reset == last_reset?}
+
+    check_reset -->|Yes: Same window| calc_delta[delta = used - last_used]
+    calc_delta --> check_delta{delta < 0?}
+
+    check_delta -->|Yes: Anomaly| anomaly[anomalies += 1<br/>delta = 0]
+    anomaly --> update_total
+    check_delta -->|No: Normal| update_total[total_used += delta]
+
+    check_reset -->|No: New window| new_window[windows_crossed += 1<br/>total_used += used<br/>last_reset = reset]
+
+    update_total --> update_last[last_used = used<br/>last_seen_ts = now]
+    new_window --> update_last
+
+    update_last --> next_bucket{More buckets?}
+    next_bucket -->|Yes| each_bucket
+    next_bucket -->|No| write_state[Atomic write state.json]
+    write_state --> done([Poll complete])
+
+    %% Styling
+    classDef decision fill:#fff3cd,stroke:#856404
+    classDef action fill:#d4edda,stroke:#155724
+    classDef anomaly fill:#f8d7da,stroke:#721c24
+
+    class check_init,check_reset,check_delta,next_bucket decision
+    class init,calc_delta,update_total,new_window,update_last,write_state action
+    class anomaly anomaly

@@ -1,0 +1,41 @@
+%% github-api-usage-monitor v1 — Poller Lifecycle
+%% Generated from spec/spec.json
+
+sequenceDiagram
+    participant WF as Workflow
+    participant Start as Start Action
+    participant Poller as Poller Process
+    participant GH as GitHub API
+    participant State as state.json
+    participant Stop as Stop Action
+    participant Summary as Step Summary
+
+    WF->>Start: mode=start
+    Start->>Start: Validate platform (Linux/macOS)
+    Start->>Poller: Spawn detached process
+    Start->>State: Write initial state
+    Start-->>WF: Success (PID saved)
+
+    loop Every 30 seconds
+        Poller->>GH: GET /rate_limit
+        alt Success
+            GH-->>Poller: Rate limit data
+            Poller->>Poller: Reduce per-bucket deltas
+            Poller->>State: Atomic write state
+        else Failure
+            Poller->>Poller: Increment poll_failures
+            Note over Poller: Continue (no retry)
+        end
+    end
+
+    Note over WF: Build/test steps run...
+
+    WF->>Stop: mode=stop (always)
+    Stop->>Poller: SIGTERM (via PID)
+    Poller-->>Stop: Process terminated
+    Stop->>State: Read final state
+    Stop->>Stop: Calculate duration, warnings
+    Stop->>Summary: Write table + warnings
+    Stop-->>WF: Summary rendered
+
+    Note over WF: Job complete

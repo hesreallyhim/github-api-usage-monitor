@@ -1,0 +1,75 @@
+%% github-api-usage-monitor v1 — System Architecture
+%% Generated from spec/spec.json
+
+flowchart TB
+    subgraph workflow["GitHub Workflow"]
+        start_step["Step: mode=start"]
+        work_steps["Steps: build/test/etc."]
+        stop_step["Step: mode=stop (always)"]
+    end
+
+    subgraph action["Action Entry Layer"]
+        main["main.ts<br/>Dispatch start/stop"]
+    end
+
+    subgraph poller_layer["Poller Layer"]
+        poller["poller.ts<br/>Background process"]
+    end
+
+    subgraph core["Core Logic Layer"]
+        reducer["reducer.ts<br/>Pure reducer logic"]
+        state["state.ts<br/>Atomic read/write"]
+    end
+
+    subgraph infra["Infrastructure Layer"]
+        github["github.ts<br/>GET /rate_limit"]
+        output["output.ts<br/>Step summary + console"]
+        paths["paths.ts<br/>RUNNER_TEMP paths"]
+        platform["platform.ts<br/>OS detection"]
+    end
+
+    subgraph storage["$RUNNER_TEMP"]
+        state_file[("state.json")]
+        pid_file[("poller.pid")]
+    end
+
+    subgraph external["External"]
+        gh_api["GitHub API<br/>/rate_limit"]
+        step_summary["$GITHUB_STEP_SUMMARY"]
+    end
+
+    %% Workflow flow
+    start_step --> main
+    work_steps -.->|"runs in parallel"| poller
+    stop_step --> main
+
+    %% Action dispatching
+    main -->|"mode=start"| poller
+    main -->|"mode=stop"| state
+    main --> output
+    main --> platform
+
+    %% Poller operations
+    poller -->|"every 30s"| github
+    github -->|"fetch"| gh_api
+    poller --> reducer
+    poller --> state
+
+    %% State persistence
+    state -->|"atomic write"| state_file
+    state -->|"read"| state_file
+    poller -->|"write PID"| pid_file
+    main -->|"read PID"| pid_file
+    state --> paths
+
+    %% Output
+    output -->|"write summary"| step_summary
+
+    %% Styling
+    classDef layer fill:#f9f9f9,stroke:#333,stroke-width:2px
+    classDef storage fill:#fff3cd,stroke:#856404
+    classDef external fill:#d4edda,stroke:#155724
+
+    class action,poller_layer,core,infra layer
+    class state_file,pid_file storage
+    class gh_api,step_summary external
