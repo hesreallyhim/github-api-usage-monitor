@@ -19,9 +19,9 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import type { ReducerState } from './types';
-import { POLL_INTERVAL_SECONDS } from './types';
+import { POLL_INTERVAL_SECONDS, MAX_LIFETIME_MS } from './types';
 import { fetchRateLimit } from './github';
-import { reduce, recordFailure, createInitialState } from './reducer';
+import { reduce, recordFailure, createInitialState, markStopped } from './reducer';
 import { readState, writeState } from './state';
 
 // -----------------------------------------------------------------------------
@@ -216,6 +216,7 @@ function sleep(ms: number): Promise<void> {
  */
 async function runPollerLoop(token: string, intervalSeconds: number): Promise<void> {
   let state: ReducerState;
+  const startTimeMs = Date.now();
 
   // Handle graceful shutdown - write state immediately before exiting
   process.on('SIGTERM', () => {
@@ -241,8 +242,20 @@ async function runPollerLoop(token: string, intervalSeconds: number): Promise<vo
   // Initial poll immediately
   state = await performPoll(state, token);
 
-  // Polling loop (runs until SIGTERM)
+  // Polling loop (runs until SIGTERM or max lifetime exceeded)
   while (true) {
+    // Defense-in-depth: exit if max lifetime exceeded
+    const elapsedMs = Date.now() - startTimeMs;
+    if (elapsedMs >= MAX_LIFETIME_MS) {
+      console.error(
+        `Poller exceeded max lifetime (${MAX_LIFETIME_MS}ms). ` +
+        `Exiting as safety measure.`
+      );
+      state = markStopped(state);
+      writeState(state);
+      process.exit(0);
+    }
+
     await sleep(intervalSeconds * 1000);
     state = await performPoll(state, token);
   }

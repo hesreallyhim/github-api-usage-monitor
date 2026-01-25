@@ -83,3 +83,5 @@ export declare const STATE_FILE_NAME = "state.json";
 export declare const PID_FILE_NAME = "poller.pid";
 /** Timeout for fetch requests to GitHub API (milliseconds) */
 export declare const FETCH_TIMEOUT_MS = 10000;
+/** Maximum poller lifetime as defense-in-depth (6 hours in milliseconds) */
+export declare const MAX_LIFETIME_MS: number;

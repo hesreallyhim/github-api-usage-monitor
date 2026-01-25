@@ -27,6 +27,8 @@ const STATE_FILE_NAME = 'state.json';
 const types_PID_FILE_NAME = 'poller.pid';
 /** Timeout for fetch requests to GitHub API (milliseconds) */
 const FETCH_TIMEOUT_MS = 10000;
+/** Maximum poller lifetime as defense-in-depth (6 hours in milliseconds) */
+const MAX_LIFETIME_MS = 6 * 60 * 60 * 1000;
 
 ;// CONCATENATED MODULE: ./src/utils.ts
 /**
@@ -783,6 +785,7 @@ function poller_sleep(ms) {
  */
 async function runPollerLoop(token, intervalSeconds) {
     let state;
+    const startTimeMs = Date.now();
     // Handle graceful shutdown - write state immediately before exiting
     process.on('SIGTERM', () => {
         if (state) {
@@ -803,8 +806,17 @@ async function runPollerLoop(token, intervalSeconds) {
     writeState(state);
     // Initial poll immediately
     state = await performPoll(state, token);
-    // Polling loop (runs until SIGTERM)
+    // Polling loop (runs until SIGTERM or max lifetime exceeded)
     while (true) {
+        // Defense-in-depth: exit if max lifetime exceeded
+        const elapsedMs = Date.now() - startTimeMs;
+        if (elapsedMs >= MAX_LIFETIME_MS) {
+            console.error(`Poller exceeded max lifetime (${MAX_LIFETIME_MS}ms). ` +
+                `Exiting as safety measure.`);
+            state = markStopped(state);
+            writeState(state);
+            process.exit(0);
+        }
         await poller_sleep(intervalSeconds * 1000);
         state = await performPoll(state, token);
     }
