@@ -60,3 +60,24 @@ export declare function readPid(): number | null;
  * Removes the PID file.
  */
 export declare function removePid(): void;
+export interface VerifyStartupResult {
+    success: true;
+}
+export interface VerifyStartupError {
+    success: false;
+    error: string;
+}
+export type VerifyStartupOutcome = VerifyStartupResult | VerifyStartupError;
+/**
+ * Waits for the poller to signal startup by setting poller_started_at_ts.
+ *
+ * The poller writes this timestamp immediately on startup, before any API calls.
+ * This confirms:
+ *   - Process spawned successfully
+ *   - Environment variables were read
+ *   - File I/O is working
+ *
+ * @param timeoutMs - Maximum time to wait (default 5000ms)
+ * @returns Success or error with details
+ */
+export declare function verifyPollerStartup(timeoutMs?: number): Promise<VerifyStartupOutcome>;

@@ -14,7 +14,7 @@
 import * as core from '@actions/core';
 import { assertSupported } from './platform';
 import { spawnPoller, killPoller } from './poller';
-import { writeState, writePid } from './state';
+import { writeState, writePid, verifyPollerStartup } from './state';
 import { createInitialState, reduce } from './reducer';
 import { fetchRateLimit } from './github';
 
@@ -83,6 +83,19 @@ async function handleStart(token: string): Promise<void> {
       // Best effort cleanup
     }
     throw new Error(`Failed to write PID: ${pidResult.error}`);
+  }
+
+  // Verify poller actually started - if this fails, kill and cleanup
+  core.info('Verifying poller startup...');
+  const verifyResult = await verifyPollerStartup();
+  if (!verifyResult.success) {
+    // Cleanup potentially dead/stuck process
+    try {
+      killPoller(spawnResult.pid);
+    } catch {
+      // Best effort cleanup
+    }
+    throw new Error(`Poller startup verification failed: ${verifyResult.error}`);
   }
 
   const bucketCount = Object.keys(state.buckets).length;

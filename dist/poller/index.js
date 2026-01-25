@@ -274,6 +274,7 @@ function createInitialState() {
         buckets: {},
         started_at_ts: new Date().toISOString(),
         stopped_at_ts: null,
+        poller_started_at_ts: null,
         interval_seconds: types_POLL_INTERVAL_SECONDS,
         poll_count: 0,
         poll_failures: 0,
@@ -567,6 +568,40 @@ function removePid() {
         // Ignore errors - file may not exist
     }
 }
+// -----------------------------------------------------------------------------
+// Startup verification
+// -----------------------------------------------------------------------------
+const STARTUP_TIMEOUT_MS = 5000;
+const STARTUP_CHECK_INTERVAL_MS = 100;
+/**
+ * Waits for the poller to signal startup by setting poller_started_at_ts.
+ *
+ * The poller writes this timestamp immediately on startup, before any API calls.
+ * This confirms:
+ *   - Process spawned successfully
+ *   - Environment variables were read
+ *   - File I/O is working
+ *
+ * @param timeoutMs - Maximum time to wait (default 5000ms)
+ * @returns Success or error with details
+ */
+async function verifyPollerStartup(timeoutMs = STARTUP_TIMEOUT_MS) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+        const result = readState();
+        if (result.success && result.state.poller_started_at_ts !== null) {
+            return { success: true };
+        }
+        await sleep(STARTUP_CHECK_INTERVAL_MS);
+    }
+    return {
+        success: false,
+        error: `Poller did not signal startup within ${timeoutMs}ms`,
+    };
+}
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 ;// CONCATENATED MODULE: ./src/poller.ts
 /**
@@ -679,7 +714,7 @@ async function killPollerWithVerification(pid) {
     // Wait for process to die
     const startTime = Date.now();
     while (Date.now() - startTime < KILL_TIMEOUT_MS) {
-        await sleep(KILL_CHECK_INTERVAL_MS);
+        await poller_sleep(KILL_CHECK_INTERVAL_MS);
         if (!isProcessRunning(pid)) {
             return { success: true, escalated: false };
         }
@@ -687,7 +722,7 @@ async function killPollerWithVerification(pid) {
     // Escalate to SIGKILL
     try {
         process.kill(pid, 'SIGKILL');
-        await sleep(KILL_CHECK_INTERVAL_MS);
+        await poller_sleep(KILL_CHECK_INTERVAL_MS);
         if (!isProcessRunning(pid)) {
             return { success: true, escalated: true };
         }
@@ -710,7 +745,7 @@ function isProcessRunning(pid) {
         return false;
     }
 }
-function sleep(ms) {
+function poller_sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 // -----------------------------------------------------------------------------
@@ -719,13 +754,23 @@ function sleep(ms) {
 /**
  * Main polling loop.
  * Runs indefinitely until SIGTERM received.
+ *
+ * Startup sequence:
+ *   1. Read or create initial state
+ *   2. Write state immediately (signals "alive" to parent)
+ *   3. Begin polling loop
+ *
+ * Shutdown sequence (SIGTERM):
+ *   1. Write current state immediately
+ *   2. Exit with code 0
+ *
+ * The parent process (main.ts) waits for the state file to confirm
+ * the poller started successfully before proceeding.
  */
 async function runPollerLoop(token, intervalSeconds) {
-    let running = true;
     let state;
     // Handle graceful shutdown - write state immediately before exiting
     process.on('SIGTERM', () => {
-        running = false;
         if (state) {
             writeState(state);
         }
@@ -739,17 +784,16 @@ async function runPollerLoop(token, intervalSeconds) {
     else {
         state = createInitialState();
     }
+    // Signal alive: set timestamp and write state so parent can detect startup
+    state = { ...state, poller_started_at_ts: new Date().toISOString() };
+    writeState(state);
     // Initial poll immediately
     state = await performPoll(state, token);
-    // Polling loop
-    while (running) {
-        await sleep(intervalSeconds * 1000);
-        if (!running)
-            break;
+    // Polling loop (runs until SIGTERM)
+    while (true) {
+        await poller_sleep(intervalSeconds * 1000);
         state = await performPoll(state, token);
     }
-    // Final state write on shutdown
-    writeState(state);
 }
 /**
  * Performs a single poll and updates state.

@@ -142,6 +142,7 @@ export function createInitialState(): ReducerState {
     buckets: {},
     started_at_ts: new Date().toISOString(),
     stopped_at_ts: null,
+    poller_started_at_ts: null,
     interval_seconds: POLL_INTERVAL_SECONDS,
     poll_count: 0,
     poll_failures: 0,

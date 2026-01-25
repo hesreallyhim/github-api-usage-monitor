@@ -46,6 +46,8 @@ export interface ReducerState {
     started_at_ts: string;
     /** ISO timestamp when monitoring stopped (null if still running) */
     stopped_at_ts: string | null;
+    /** ISO timestamp when poller process started (null before poller runs) */
+    poller_started_at_ts: string | null;
     /** Polling interval in seconds */
     interval_seconds: number;
     /** Total number of successful polls */

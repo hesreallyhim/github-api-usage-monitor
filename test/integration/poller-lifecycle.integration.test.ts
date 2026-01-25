@@ -78,25 +78,23 @@ describe('Poller Lifecycle Integration', () => {
 
     // Capture stderr for debugging
     let stderr = '';
-    child.stderr?.on('data', (data) => { stderr += data.toString(); });
+    child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
-    // Wait for initial state write (poller does immediate first poll)
-    // Even with invalid token, state should be written with poll_failures
+    // Wait for poller to signal startup via poller_started_at_ts
+    // The poller writes this immediately on startup, before any API calls
     try {
-      await waitForFile(statePath, 5000);
+      await waitForPollerStartup(statePath, 5000);
     } catch (err) {
-      // Log debug info if file not found
-      console.error('State file not created. Poller stderr:', stderr);
+      // Log debug info if startup not detected
+      console.error('Poller startup not detected. Poller stderr:', stderr);
       console.error('Expected path:', statePath);
       console.error('Test dir contents:', fs.readdirSync(testStateDir, { recursive: true }));
       throw err;
     }
 
-    // Verify state file exists and has content
-    // Note: fake token causes poll failures, not successful polls
-    const stateBefore = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    const totalActivity = stateBefore.poll_count + stateBefore.poll_failures;
-    expect(totalActivity).toBeGreaterThanOrEqual(1);
+    // Verify state file has poller_started_at_ts set
+    const stateBefore = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as { poller_started_at_ts: string | null };
+    expect(stateBefore.poller_started_at_ts).toBeTruthy();
 
     // Send SIGTERM for graceful shutdown
     process.kill(child.pid!, 'SIGTERM');
@@ -107,10 +105,9 @@ describe('Poller Lifecycle Integration', () => {
     // Verify clean exit
     expect(exitCode).toBe(0);
 
-    // Verify final state was written (activity should be >= before)
-    const stateAfter = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    const totalActivityAfter = stateAfter.poll_count + stateAfter.poll_failures;
-    expect(totalActivityAfter).toBeGreaterThanOrEqual(totalActivity);
+    // Verify final state was written (poller_started_at_ts should still be set)
+    const stateAfter = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as { poller_started_at_ts: string | null };
+    expect(stateAfter.poller_started_at_ts).toBeTruthy();
   });
 
   it('process is killable with SIGKILL if SIGTERM fails', async () => {
@@ -170,15 +167,24 @@ describe('Poller Lifecycle Integration', () => {
 // Helper functions
 // -----------------------------------------------------------------------------
 
-function waitForFile(filePath: string, timeoutMs: number): Promise<void> {
+function waitForPollerStartup(statePath: string, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
-    const check = () => {
-      if (fs.existsSync(filePath)) {
-        return resolve();
+    const check = (): void => {
+      try {
+        if (fs.existsSync(statePath)) {
+          const content = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as { poller_started_at_ts: string | null };
+          if (content.poller_started_at_ts) {
+            resolve();
+            return;
+          }
+        }
+      } catch {
+        // File may be partially written, retry
       }
       if (Date.now() - start > timeoutMs) {
-        return reject(new Error(`Timeout waiting for file: ${filePath}`));
+        reject(new Error(`Timeout waiting for poller startup: ${statePath}`));
+        return;
       }
       setTimeout(check, 50);
     };

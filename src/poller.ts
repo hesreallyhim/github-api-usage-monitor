@@ -201,14 +201,24 @@ function sleep(ms: number): Promise<void> {
 /**
  * Main polling loop.
  * Runs indefinitely until SIGTERM received.
+ *
+ * Startup sequence:
+ *   1. Read or create initial state
+ *   2. Write state immediately (signals "alive" to parent)
+ *   3. Begin polling loop
+ *
+ * Shutdown sequence (SIGTERM):
+ *   1. Write current state immediately
+ *   2. Exit with code 0
+ *
+ * The parent process (main.ts) waits for the state file to confirm
+ * the poller started successfully before proceeding.
  */
 async function runPollerLoop(token: string, intervalSeconds: number): Promise<void> {
-  let running = true;
   let state: ReducerState;
 
   // Handle graceful shutdown - write state immediately before exiting
   process.on('SIGTERM', () => {
-    running = false;
     if (state) {
       writeState(state);
     }
@@ -224,20 +234,18 @@ async function runPollerLoop(token: string, intervalSeconds: number): Promise<vo
     state = createInitialState();
   }
 
+  // Signal alive: set timestamp and write state so parent can detect startup
+  state = { ...state, poller_started_at_ts: new Date().toISOString() };
+  writeState(state);
+
   // Initial poll immediately
   state = await performPoll(state, token);
 
-  // Polling loop
-  while (running) {
+  // Polling loop (runs until SIGTERM)
+  while (true) {
     await sleep(intervalSeconds * 1000);
-
-    if (!running) break;
-
     state = await performPoll(state, token);
   }
-
-  // Final state write on shutdown
-  writeState(state);
 }
 
 /**

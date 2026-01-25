@@ -216,3 +216,58 @@ export function removePid(): void {
     // Ignore errors - file may not exist
   }
 }
+
+// -----------------------------------------------------------------------------
+// Startup verification
+// -----------------------------------------------------------------------------
+
+const STARTUP_TIMEOUT_MS = 5000;
+const STARTUP_CHECK_INTERVAL_MS = 100;
+
+export interface VerifyStartupResult {
+  success: true;
+}
+
+export interface VerifyStartupError {
+  success: false;
+  error: string;
+}
+
+export type VerifyStartupOutcome = VerifyStartupResult | VerifyStartupError;
+
+/**
+ * Waits for the poller to signal startup by setting poller_started_at_ts.
+ *
+ * The poller writes this timestamp immediately on startup, before any API calls.
+ * This confirms:
+ *   - Process spawned successfully
+ *   - Environment variables were read
+ *   - File I/O is working
+ *
+ * @param timeoutMs - Maximum time to wait (default 5000ms)
+ * @returns Success or error with details
+ */
+export async function verifyPollerStartup(
+  timeoutMs: number = STARTUP_TIMEOUT_MS
+): Promise<VerifyStartupOutcome> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const result = readState();
+
+    if (result.success && result.state.poller_started_at_ts !== null) {
+      return { success: true };
+    }
+
+    await sleep(STARTUP_CHECK_INTERVAL_MS);
+  }
+
+  return {
+    success: false,
+    error: `Poller did not signal startup within ${timeoutMs}ms`,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
