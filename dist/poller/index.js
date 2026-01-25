@@ -1,11 +1,37 @@
-require('./sourcemap-register.js');/******/ (() => { // webpackBootstrap
-/******/ 	"use strict";
-/******/ 	var __webpack_modules__ = ({
+import './sourcemap-register.cjs';import { createRequire as __WEBPACK_EXTERNAL_createRequire } from "module";
+/******/ var __webpack_modules__ = ({
 
-/***/ 248:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 65:
+/***/ ((module, __webpack_exports__, __nccwpck_require__) => {
 
 
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  F: () => (/* binding */ killPoller),
+  s: () => (/* binding */ spawnPoller)
+});
+
+;// CONCATENATED MODULE: external "child_process"
+const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("child_process");
+;// CONCATENATED MODULE: external "path"
+const external_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("path");
+;// CONCATENATED MODULE: ./src/types.ts
+/**
+ * Boundary types for github-api-usage-monitor v1
+ * Generated from spec/spec.json
+ *
+ * These types define the contracts between modules.
+ * Do not modify without updating the spec.
+ */
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+const POLL_INTERVAL_SECONDS = 30;
+const STATE_DIR_NAME = 'github-api-usage-monitor';
+const STATE_FILE_NAME = 'state.json';
+const types_PID_FILE_NAME = 'poller.pid';
+
+;// CONCATENATED MODULE: ./src/github.ts
 /**
  * GitHub API Client
  * Layer: infra
@@ -15,10 +41,6 @@ require('./sourcemap-register.js');/******/ (() => { // webpackBootstrap
  *
  * Fetches rate limit data from the GitHub API.
  */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.fetchRateLimit = fetchRateLimit;
-exports.isValidSample = isValidSample;
-exports.parseRateLimitResponse = parseRateLimitResponse;
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
@@ -142,318 +164,7 @@ function parseRateLimitResponse(raw) {
     return null;
 }
 
-
-/***/ }),
-
-/***/ 431:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-
-/**
- * Path Resolver
- * Layer: infra
- *
- * Provided ports:
- *   - paths.statePath
- *   - paths.pidPath
- *
- * Resolves paths within $RUNNER_TEMP for state persistence.
- */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getStateDir = getStateDir;
-exports.getStatePath = getStatePath;
-exports.getPidPath = getPidPath;
-exports.getStateTmpPath = getStateTmpPath;
-const path = __importStar(__nccwpck_require__(928));
-const types_1 = __nccwpck_require__(522);
-// -----------------------------------------------------------------------------
-// Port: paths.statePath
-// -----------------------------------------------------------------------------
-/**
- * Returns the absolute path to the state directory.
- * Creates the path string only; does not create the directory.
- *
- * @throws Error if RUNNER_TEMP is not set
- */
-function getStateDir() {
-    const runnerTemp = process.env['RUNNER_TEMP'];
-    if (!runnerTemp) {
-        throw new Error('RUNNER_TEMP environment variable is not set');
-    }
-    return path.join(runnerTemp, types_1.STATE_DIR_NAME);
-}
-/**
- * Returns the absolute path to state.json
- */
-function getStatePath() {
-    return path.join(getStateDir(), types_1.STATE_FILE_NAME);
-}
-// -----------------------------------------------------------------------------
-// Port: paths.pidPath
-// -----------------------------------------------------------------------------
-/**
- * Returns the absolute path to poller.pid
- */
-function getPidPath() {
-    return path.join(getStateDir(), types_1.PID_FILE_NAME);
-}
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-/**
- * Returns the path for atomic write temporary file
- */
-function getStateTmpPath() {
-    return path.join(getStateDir(), `${types_1.STATE_FILE_NAME}.tmp`);
-}
-
-
-/***/ }),
-
-/***/ 105:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-
-/**
- * Poller Process
- * Layer: poller
- *
- * Provided ports:
- *   - poller.spawn
- *   - poller.kill
- *
- * Background process that polls /rate_limit and updates state.
- * Runs as a detached child process.
- *
- * When run directly (as child process entry):
- *   - Reads config from environment
- *   - Polls at interval
- *   - Updates state file atomically
- *   - Handles SIGTERM for graceful shutdown
- */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.spawnPoller = spawnPoller;
-exports.killPoller = killPoller;
-const child_process_1 = __nccwpck_require__(317);
-const path = __importStar(__nccwpck_require__(928));
-const types_1 = __nccwpck_require__(522);
-const github_1 = __nccwpck_require__(248);
-const reducer_1 = __nccwpck_require__(807);
-const state_1 = __nccwpck_require__(462);
-/**
- * Spawns the poller as a detached background process.
- *
- * @param token - GitHub token for API calls
- * @returns PID of spawned process or error
- */
-function spawnPoller(token) {
-    try {
-        // Resolve path to bundled poller entry
-        // ncc bundles to dist/poller/index.js
-        const pollerEntry = path.resolve(__dirname, 'poller', 'index.js');
-        const child = (0, child_process_1.spawn)(process.execPath, [pollerEntry], {
-            detached: true,
-            stdio: 'ignore',
-            env: {
-                ...process.env,
-                GITHUB_API_MONITOR_TOKEN: token,
-                GITHUB_API_MONITOR_INTERVAL: String(types_1.POLL_INTERVAL_SECONDS),
-            },
-        });
-        // Allow parent to exit without waiting
-        child.unref();
-        if (!child.pid) {
-            return { success: false, error: 'Failed to get child PID' };
-        }
-        return { success: true, pid: child.pid };
-    }
-    catch (err) {
-        const error = err;
-        return { success: false, error: `Failed to spawn poller: ${error.message}` };
-    }
-}
-/**
- * Kills the poller process by PID.
- * Sends SIGTERM for graceful shutdown.
- *
- * @param pid - Process ID to kill
- */
-function killPoller(pid) {
-    try {
-        // Check if process exists
-        process.kill(pid, 0);
-        // Send SIGTERM
-        process.kill(pid, 'SIGTERM');
-        return { success: true };
-    }
-    catch (err) {
-        const error = err;
-        if (error.code === 'ESRCH') {
-            return {
-                success: false,
-                error: 'Process not found',
-                notFound: true,
-            };
-        }
-        return {
-            success: false,
-            error: `Failed to kill poller: ${error.message}`,
-            notFound: false,
-        };
-    }
-}
-// -----------------------------------------------------------------------------
-// Poller main loop (when run as child process)
-// -----------------------------------------------------------------------------
-/**
- * Main polling loop.
- * Runs indefinitely until SIGTERM received.
- */
-async function runPollerLoop(token, intervalSeconds) {
-    let running = true;
-    // Handle graceful shutdown
-    process.on('SIGTERM', () => {
-        running = false;
-    });
-    // Initial state or read existing
-    const stateResult = (0, state_1.readState)();
-    let state;
-    if (stateResult.success) {
-        state = stateResult.state;
-    }
-    else {
-        state = (0, reducer_1.createInitialState)();
-    }
-    // Initial poll immediately
-    state = await performPoll(state, token);
-    // Polling loop
-    while (running) {
-        await sleep(intervalSeconds * 1000);
-        if (!running)
-            break;
-        state = await performPoll(state, token);
-    }
-    // Final state write on shutdown
-    (0, state_1.writeState)(state);
-}
-/**
- * Performs a single poll and updates state.
- */
-async function performPoll(state, token) {
-    const timestamp = new Date().toISOString();
-    const result = await (0, github_1.fetchRateLimit)(token);
-    if (!result.success) {
-        const newState = (0, reducer_1.recordFailure)(state, result.error);
-        (0, state_1.writeState)(newState);
-        return newState;
-    }
-    const { state: newState } = (0, reducer_1.reduce)(state, result.data, timestamp);
-    (0, state_1.writeState)(newState);
-    return newState;
-}
-/**
- * Sleep helper.
- */
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-// -----------------------------------------------------------------------------
-// Child process entry point
-// -----------------------------------------------------------------------------
-/**
- * Entry point when run as child process.
- */
-async function main() {
-    const token = process.env['GITHUB_API_MONITOR_TOKEN'];
-    const intervalStr = process.env['GITHUB_API_MONITOR_INTERVAL'];
-    if (!token) {
-        console.error('GITHUB_API_MONITOR_TOKEN not set');
-        process.exit(1);
-    }
-    const interval = intervalStr ? parseInt(intervalStr, 10) : types_1.POLL_INTERVAL_SECONDS;
-    await runPollerLoop(token, interval);
-}
-// Run if this is the entry point
-if (require.main === require.cache[eval('__filename')]) {
-    main().catch((err) => {
-        console.error('Poller error:', err);
-        process.exit(1);
-    });
-}
-
-
-/***/ }),
-
-/***/ 807:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-
+;// CONCATENATED MODULE: ./src/reducer.ts
 /**
  * Reducer
  * Layer: core
@@ -478,14 +189,7 @@ if (require.main === require.cache[eval('__filename')]) {
  *     last_reset = reset
  *   last_used = used
  */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.initBucket = initBucket;
-exports.updateBucket = updateBucket;
-exports.createInitialState = createInitialState;
-exports.reduce = reduce;
-exports.recordFailure = recordFailure;
-exports.markStopped = markStopped;
-const types_1 = __nccwpck_require__(522);
+
 // -----------------------------------------------------------------------------
 // Port: reducer.initBucket
 // -----------------------------------------------------------------------------
@@ -576,7 +280,7 @@ function createInitialState() {
         buckets: {},
         started_at_ts: new Date().toISOString(),
         stopped_at_ts: null,
-        interval_seconds: types_1.POLL_INTERVAL_SECONDS,
+        interval_seconds: POLL_INTERVAL_SECONDS,
         poll_count: 0,
         poll_failures: 0,
         last_error: null,
@@ -644,13 +348,63 @@ function markStopped(state) {
     };
 }
 
+;// CONCATENATED MODULE: external "fs"
+const external_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs");
+;// CONCATENATED MODULE: ./src/paths.ts
+/**
+ * Path Resolver
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - paths.statePath
+ *   - paths.pidPath
+ *
+ * Resolves paths within $RUNNER_TEMP for state persistence.
+ */
 
-/***/ }),
 
-/***/ 462:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+// -----------------------------------------------------------------------------
+// Port: paths.statePath
+// -----------------------------------------------------------------------------
+/**
+ * Returns the absolute path to the state directory.
+ * Creates the path string only; does not create the directory.
+ *
+ * @throws Error if RUNNER_TEMP is not set
+ */
+function paths_getStateDir() {
+    const runnerTemp = process.env['RUNNER_TEMP'];
+    if (!runnerTemp) {
+        throw new Error('RUNNER_TEMP environment variable is not set');
+    }
+    return external_path_namespaceObject.join(runnerTemp, STATE_DIR_NAME);
+}
+/**
+ * Returns the absolute path to state.json
+ */
+function getStatePath() {
+    return external_path_namespaceObject.join(paths_getStateDir(), STATE_FILE_NAME);
+}
+// -----------------------------------------------------------------------------
+// Port: paths.pidPath
+// -----------------------------------------------------------------------------
+/**
+ * Returns the absolute path to poller.pid
+ */
+function paths_getPidPath() {
+    return path.join(paths_getStateDir(), PID_FILE_NAME);
+}
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+/**
+ * Returns the path for atomic write temporary file
+ */
+function getStateTmpPath() {
+    return external_path_namespaceObject.join(paths_getStateDir(), `${STATE_FILE_NAME}.tmp`);
+}
 
-
+;// CONCATENATED MODULE: ./src/state.ts
 /**
  * State Manager
  * Layer: core
@@ -662,57 +416,17 @@ function markStopped(state) {
  * Manages persistent state in $RUNNER_TEMP.
  * Uses atomic rename for safe writes.
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.readState = readState;
-exports.writeState = writeState;
-exports.isValidState = isValidState;
-exports.writePid = writePid;
-exports.readPid = readPid;
-exports.removePid = removePid;
-const fs = __importStar(__nccwpck_require__(896));
-const paths_1 = __nccwpck_require__(431);
+
+
 /**
  * Reads reducer state from disk.
  *
  * @returns State or error with details
  */
 function readState() {
-    const statePath = (0, paths_1.getStatePath)();
+    const statePath = getStatePath();
     try {
-        const content = fs.readFileSync(statePath, 'utf-8');
+        const content = external_fs_namespaceObject.readFileSync(statePath, 'utf-8');
         const parsed = JSON.parse(content);
         // TODO: Validate parsed state has correct shape
         // For now, trust the structure
@@ -748,17 +462,17 @@ function readState() {
  * @param state - State to persist
  */
 function writeState(state) {
-    const stateDir = (0, paths_1.getStateDir)();
-    const statePath = (0, paths_1.getStatePath)();
-    const tmpPath = (0, paths_1.getStateTmpPath)();
+    const stateDir = paths_getStateDir();
+    const statePath = getStatePath();
+    const tmpPath = getStateTmpPath();
     try {
         // Ensure directory exists
-        fs.mkdirSync(stateDir, { recursive: true });
+        external_fs_namespaceObject.mkdirSync(stateDir, { recursive: true });
         // Write to temp file
         const content = JSON.stringify(state, null, 2);
-        fs.writeFileSync(tmpPath, content, 'utf-8');
+        external_fs_namespaceObject.writeFileSync(tmpPath, content, 'utf-8');
         // Atomic rename
-        fs.renameSync(tmpPath, statePath);
+        external_fs_namespaceObject.renameSync(tmpPath, statePath);
         return { success: true };
     }
     catch (err) {
@@ -805,13 +519,13 @@ function isValidState(value) {
 // -----------------------------------------------------------------------------
 // PID file management
 // -----------------------------------------------------------------------------
-const paths_2 = __nccwpck_require__(431);
+
 /**
  * Writes the poller PID to disk.
  */
 function writePid(pid) {
-    const pidPath = (0, paths_2.getPidPath)();
-    const stateDir = (0, paths_1.getStateDir)();
+    const pidPath = getPidPath();
+    const stateDir = getStateDir();
     try {
         fs.mkdirSync(stateDir, { recursive: true });
         fs.writeFileSync(pidPath, String(pid), 'utf-8');
@@ -829,7 +543,7 @@ function writePid(pid) {
  * Reads the poller PID from disk.
  */
 function readPid() {
-    const pidPath = (0, paths_2.getPidPath)();
+    const pidPath = getPidPath();
     try {
         const content = fs.readFileSync(pidPath, 'utf-8');
         const pid = parseInt(content.trim(), 10);
@@ -843,7 +557,7 @@ function readPid() {
  * Removes the PID file.
  */
 function removePid() {
-    const pidPath = (0, paths_2.getPidPath)();
+    const pidPath = getPidPath();
     try {
         fs.unlinkSync(pidPath);
     }
@@ -852,99 +566,259 @@ function removePid() {
     }
 }
 
+;// CONCATENATED MODULE: ./src/poller.ts
+/* module decorator */ module = __nccwpck_require__.hmd(module);
+/**
+ * Poller Process
+ * Layer: poller
+ *
+ * Provided ports:
+ *   - poller.spawn
+ *   - poller.kill
+ *
+ * Background process that polls /rate_limit and updates state.
+ * Runs as a detached child process.
+ *
+ * When run directly (as child process entry):
+ *   - Reads config from environment
+ *   - Polls at interval
+ *   - Updates state file atomically
+ *   - Handles SIGTERM for graceful shutdown
+ */
 
-/***/ }),
 
-/***/ 522:
-/***/ ((__unused_webpack_module, exports) => {
+
+
 
 
 /**
- * Boundary types for github-api-usage-monitor v1
- * Generated from spec/spec.json
+ * Spawns the poller as a detached background process.
  *
- * These types define the contracts between modules.
- * Do not modify without updating the spec.
+ * @param token - GitHub token for API calls
+ * @returns PID of spawned process or error
  */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.PID_FILE_NAME = exports.STATE_FILE_NAME = exports.STATE_DIR_NAME = exports.POLL_INTERVAL_SECONDS = void 0;
+function spawnPoller(token) {
+    try {
+        // Resolve path to bundled poller entry
+        // ncc bundles to dist/poller/index.js
+        const pollerEntry = external_path_namespaceObject.resolve(__dirname, 'poller', 'index.js');
+        const child = (0,external_child_process_namespaceObject.spawn)(process.execPath, [pollerEntry], {
+            detached: true,
+            stdio: 'ignore',
+            env: {
+                ...process.env,
+                GITHUB_API_MONITOR_TOKEN: token,
+                GITHUB_API_MONITOR_INTERVAL: String(POLL_INTERVAL_SECONDS),
+            },
+        });
+        // Allow parent to exit without waiting
+        child.unref();
+        if (!child.pid) {
+            return { success: false, error: 'Failed to get child PID' };
+        }
+        return { success: true, pid: child.pid };
+    }
+    catch (err) {
+        const error = err;
+        return { success: false, error: `Failed to spawn poller: ${error.message}` };
+    }
+}
+/**
+ * Kills the poller process by PID.
+ * Sends SIGTERM for graceful shutdown.
+ *
+ * @param pid - Process ID to kill
+ */
+function killPoller(pid) {
+    try {
+        // Check if process exists
+        process.kill(pid, 0);
+        // Send SIGTERM
+        process.kill(pid, 'SIGTERM');
+        return { success: true };
+    }
+    catch (err) {
+        const error = err;
+        if (error.code === 'ESRCH') {
+            return {
+                success: false,
+                error: 'Process not found',
+                notFound: true,
+            };
+        }
+        return {
+            success: false,
+            error: `Failed to kill poller: ${error.message}`,
+            notFound: false,
+        };
+    }
+}
 // -----------------------------------------------------------------------------
-// Constants
+// Poller main loop (when run as child process)
 // -----------------------------------------------------------------------------
-exports.POLL_INTERVAL_SECONDS = 30;
-exports.STATE_DIR_NAME = 'github-api-usage-monitor';
-exports.STATE_FILE_NAME = 'state.json';
-exports.PID_FILE_NAME = 'poller.pid';
+/**
+ * Main polling loop.
+ * Runs indefinitely until SIGTERM received.
+ */
+async function runPollerLoop(token, intervalSeconds) {
+    let running = true;
+    // Handle graceful shutdown
+    process.on('SIGTERM', () => {
+        running = false;
+    });
+    // Initial state or read existing
+    const stateResult = readState();
+    let state;
+    if (stateResult.success) {
+        state = stateResult.state;
+    }
+    else {
+        state = createInitialState();
+    }
+    // Initial poll immediately
+    state = await performPoll(state, token);
+    // Polling loop
+    while (running) {
+        await sleep(intervalSeconds * 1000);
+        if (!running)
+            break;
+        state = await performPoll(state, token);
+    }
+    // Final state write on shutdown
+    writeState(state);
+}
+/**
+ * Performs a single poll and updates state.
+ */
+async function performPoll(state, token) {
+    const timestamp = new Date().toISOString();
+    const result = await fetchRateLimit(token);
+    if (!result.success) {
+        const newState = recordFailure(state, result.error);
+        writeState(newState);
+        return newState;
+    }
+    const { state: newState } = reduce(state, result.data, timestamp);
+    writeState(newState);
+    return newState;
+}
+/**
+ * Sleep helper.
+ */
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+// -----------------------------------------------------------------------------
+// Child process entry point
+// -----------------------------------------------------------------------------
+/**
+ * Entry point when run as child process.
+ */
+async function main() {
+    const token = process.env['GITHUB_API_MONITOR_TOKEN'];
+    const intervalStr = process.env['GITHUB_API_MONITOR_INTERVAL'];
+    if (!token) {
+        console.error('GITHUB_API_MONITOR_TOKEN not set');
+        process.exit(1);
+    }
+    const interval = intervalStr ? parseInt(intervalStr, 10) : POLL_INTERVAL_SECONDS;
+    await runPollerLoop(token, interval);
+}
+// Run if this is the entry point
+if (__nccwpck_require__.c[__nccwpck_require__.s] === module) {
+    main().catch((err) => {
+        console.error('Poller error:', err);
+        process.exit(1);
+    });
+}
 
-
-/***/ }),
-
-/***/ 317:
-/***/ ((module) => {
-
-module.exports = require("child_process");
-
-/***/ }),
-
-/***/ 896:
-/***/ ((module) => {
-
-module.exports = require("fs");
-
-/***/ }),
-
-/***/ 928:
-/***/ ((module) => {
-
-module.exports = require("path");
 
 /***/ })
 
-/******/ 	});
+/******/ });
 /************************************************************************/
-/******/ 	// The module cache
-/******/ 	var __webpack_module_cache__ = {};
-/******/ 	
-/******/ 	// The require function
-/******/ 	function __nccwpck_require__(moduleId) {
-/******/ 		// Check if module is in cache
-/******/ 		var cachedModule = __webpack_module_cache__[moduleId];
-/******/ 		if (cachedModule !== undefined) {
-/******/ 			return cachedModule.exports;
-/******/ 		}
-/******/ 		// Create a new module (and put it into the cache)
-/******/ 		var module = __webpack_module_cache__[moduleId] = {
-/******/ 			// no module.id needed
-/******/ 			// no module.loaded needed
-/******/ 			exports: {}
-/******/ 		};
-/******/ 	
-/******/ 		// Execute the module function
-/******/ 		var threw = true;
-/******/ 		try {
-/******/ 			__webpack_modules__[moduleId].call(module.exports, module, module.exports, __nccwpck_require__);
-/******/ 			threw = false;
-/******/ 		} finally {
-/******/ 			if(threw) delete __webpack_module_cache__[moduleId];
-/******/ 		}
-/******/ 	
-/******/ 		// Return the exports of the module
-/******/ 		return module.exports;
+/******/ // The module cache
+/******/ var __webpack_module_cache__ = {};
+/******/ 
+/******/ // The require function
+/******/ function __nccwpck_require__(moduleId) {
+/******/ 	// Check if module is in cache
+/******/ 	var cachedModule = __webpack_module_cache__[moduleId];
+/******/ 	if (cachedModule !== undefined) {
+/******/ 		return cachedModule.exports;
 /******/ 	}
-/******/ 	
+/******/ 	// Create a new module (and put it into the cache)
+/******/ 	var module = __webpack_module_cache__[moduleId] = {
+/******/ 		id: moduleId,
+/******/ 		loaded: false,
+/******/ 		exports: {}
+/******/ 	};
+/******/ 
+/******/ 	// Execute the module function
+/******/ 	var threw = true;
+/******/ 	try {
+/******/ 		__webpack_modules__[moduleId](module, module.exports, __nccwpck_require__);
+/******/ 		threw = false;
+/******/ 	} finally {
+/******/ 		if(threw) delete __webpack_module_cache__[moduleId];
+/******/ 	}
+/******/ 
+/******/ 	// Flag the module as loaded
+/******/ 	module.loaded = true;
+/******/ 
+/******/ 	// Return the exports of the module
+/******/ 	return module.exports;
+/******/ }
+/******/ 
+/******/ // expose the module cache
+/******/ __nccwpck_require__.c = __webpack_module_cache__;
+/******/ 
 /************************************************************************/
-/******/ 	/* webpack/runtime/compat */
-/******/ 	
-/******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
-/******/ 	
+/******/ /* webpack/runtime/define property getters */
+/******/ (() => {
+/******/ 	// define getter functions for harmony exports
+/******/ 	__nccwpck_require__.d = (exports, definition) => {
+/******/ 		for(var key in definition) {
+/******/ 			if(__nccwpck_require__.o(definition, key) && !__nccwpck_require__.o(exports, key)) {
+/******/ 				Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
+/******/ 			}
+/******/ 		}
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/harmony module decorator */
+/******/ (() => {
+/******/ 	__nccwpck_require__.hmd = (module) => {
+/******/ 		module = Object.create(module);
+/******/ 		if (!module.children) module.children = [];
+/******/ 		Object.defineProperty(module, 'exports', {
+/******/ 			enumerable: true,
+/******/ 			set: () => {
+/******/ 				throw new Error('ES Modules may not assign module.exports or exports.*, Use ESM export syntax, instead: ' + module.id);
+/******/ 			}
+/******/ 		});
+/******/ 		return module;
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/hasOwnProperty shorthand */
+/******/ (() => {
+/******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/compat */
+/******/ 
+/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = new URL('.', import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
+/******/ 
 /************************************************************************/
-/******/ 	
-/******/ 	// startup
-/******/ 	// Load entry module and return exports
-/******/ 	// This entry module is referenced by other modules so it can't be inlined
-/******/ 	var __webpack_exports__ = __nccwpck_require__(105);
-/******/ 	module.exports = __webpack_exports__;
-/******/ 	
-/******/ })()
-;
+/******/ 
+/******/ // module cache are used so entry inlining is disabled
+/******/ // startup
+/******/ // Load entry module and return exports
+/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 65);
+/******/ var __webpack_exports__killPoller = __webpack_exports__.F;
+/******/ var __webpack_exports__spawnPoller = __webpack_exports__.s;
+/******/ export { __webpack_exports__killPoller as killPoller, __webpack_exports__spawnPoller as spawnPoller };
+/******/ 
+
 //# sourceMappingURL=index.js.map
