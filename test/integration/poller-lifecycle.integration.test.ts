@@ -139,7 +139,7 @@ describe('Poller Lifecycle Integration', () => {
     expect(isProcessRunning(child.pid!)).toBe(false);
   });
 
-  it('process.kill(pid, 0) correctly detects running vs dead process', () => {
+  it('process.kill(pid, 0) correctly detects running vs dead process', async () => {
     // Spawn a short-lived process
     const shortProcess = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], {
       detached: true,
@@ -155,11 +155,9 @@ describe('Poller Lifecycle Integration', () => {
     // Kill it
     process.kill(pid, 'SIGKILL');
 
-    // Wait a moment for OS to clean up
-    // Note: this is slightly racy but acceptable for this test
-    setTimeout(() => {
-      expect(isProcessRunning(pid)).toBe(false);
-    }, 100);
+    // Wait for OS to clean up
+    await sleep(100);
+    expect(isProcessRunning(pid)).toBe(false);
   });
 });
 
