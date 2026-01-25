@@ -1,0 +1,22 @@
+name: github-api-usage-monitor
+description: Monitor GitHub API rate-limit usage during a job by polling /rate_limit.
+author: ''
+
+branding:
+  icon: activity
+  color: gray-dark
+
+inputs:
+  mode:
+    description: 'start or stop the monitor'
+    required: true
+  token:
+    description: 'GitHub token (defaults to GITHUB_TOKEN)'
+    required: false
+    default: ${{ github.token }}
+
+outputs: {}
+
+runs:
+  using: node20
+  main: dist/main.js

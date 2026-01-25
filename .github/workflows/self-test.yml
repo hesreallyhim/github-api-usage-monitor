@@ -1,0 +1,117 @@
+name: Self-Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build:all
+
+      - name: Start API usage monitor
+        uses: ./
+        with:
+          mode: start
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Simulate API usage
+        run: |
+          # Make some API calls to generate usage
+          for i in {1..5}; do
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              https://api.github.com/rate_limit > /dev/null
+            sleep 2
+          done
+
+      - name: Stop API usage monitor
+        if: always()
+        uses: ./
+        with:
+          mode: stop
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build:all
+
+      - name: Start API usage monitor
+        uses: ./
+        with:
+          mode: start
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Simulate API usage
+        run: |
+          # Make some API calls to generate usage
+          for i in {1..5}; do
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              https://api.github.com/rate_limit > /dev/null
+            sleep 2
+          done
+
+      - name: Stop API usage monitor
+        if: always()
+        uses: ./
+        with:
+          mode: stop
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  test-windows-unsupported:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build:all
+
+      - name: Start API usage monitor (should fail)
+        id: start
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: start
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Windows is unsupported
+        run: |
+          if ("${{ steps.start.outcome }}" -ne "failure") {
+            Write-Error "Expected Windows to fail but it succeeded"
+            exit 1
+          }
+          Write-Output "Windows correctly reported as unsupported"
