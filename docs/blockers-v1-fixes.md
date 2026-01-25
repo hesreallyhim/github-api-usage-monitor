@@ -225,30 +225,27 @@ A heartbeat mechanism could detect stuck pollers mid-job, not just at shutdown. 
 
 ---
 
-# Test fixes - review comments:
+## Follow-up Work (from testing-expert review)
 
- Verdict: PRODUCTION-READY with Minor Caveats                                                                                              
-                                                                                                                                            
-  Strengths identified:                                                                                                                     
-  1. Clean, well-documented code with clear separation of concerns                                                                          
-  2. Comprehensive design documentation in blockers-v1-fixes.md                                                                             
-  3. Integration tests that verify real process behavior                                                                                    
-  4. Proper orphan cleanup safety net in tests                                                                                              
-  5. Atomic state file writes prevent corruption                                                                                            
-  6. Kill verification with escalation ensures no orphaned processes                                                                        
-  7. Startup verification confirms process health before proceeding                                                                         
-                                                                                                                                            
-  Gaps identified:                                                                                                                          
-  ┌──────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐        
-  │ Priority │                                                        Issue                                                        │        
-  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤        
-  │ P1       │ Race condition in process.kill(pid, 0) test - uses setTimeout instead of await sleep(), making assertion unreliable │        
-  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤        
-  │ P2       │ Missing test for startup verification timeout path                                                                  │        
-  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤        
-  │ P2       │ isValidState() doesn't validate poller_started_at_ts, stopped_at_ts, or last_error types                            │        
-  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤        
-  │ P3       │ Consider max lifetime for defense-in-depth                                                                          │        
-  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤        
-  │ P3       │ Consider making timeout constants configurable                                                                      │        
-  └──────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  
+**Verdict:** PRODUCTION-READY with minor caveats
+
+### Completed
+
+| Priority | Issue | Status |
+|----------|-------|--------|
+| P1 | Race condition in `process.kill(pid, 0)` test - used `setTimeout` instead of `await sleep()` | **DONE** (commit `e2ad485`) |
+
+### Pending
+
+| Priority | Issue | Status |
+|----------|-------|--------|
+| P2 | Missing test for startup verification timeout path | TODO |
+| P2 | `isValidState()` doesn't validate `poller_started_at_ts`, `stopped_at_ts`, or `last_error` types | TODO |
+| P3 | Consider max lifetime for defense-in-depth | Future |
+| P3 | Consider making timeout constants configurable | Future |
+
+### Other Improvements
+
+| Item | Status |
+|------|--------|
+| ESLint migrated from deprecated `tseslint.config()` to `defineConfig()` | **DONE** (commit `d9a23ca`) |  
