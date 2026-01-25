@@ -125,3 +125,6 @@ export const POLL_INTERVAL_SECONDS = 30;
 export const STATE_DIR_NAME = 'github-api-usage-monitor';
 export const STATE_FILE_NAME = 'state.json';
 export const PID_FILE_NAME = 'poller.pid';
+
+/** Timeout for fetch requests to GitHub API (milliseconds) */
+export const FETCH_TIMEOUT_MS = 10000;
