@@ -10,9 +10,24 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 
 const POLLER_SCRIPT = path.resolve(__dirname, '../../dist/poller/index.js');
+
+// Safety net: track all spawned PIDs to kill on exit
+const spawnedPids = new Set<number>();
+
+afterAll(() => {
+  // Kill any orphaned processes from failed tests
+  for (const pid of spawnedPids) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Already dead
+    }
+  }
+  spawnedPids.clear();
+});
 
 describe('Poller Lifecycle Integration', () => {
   let testStateDir: string;
@@ -30,6 +45,7 @@ describe('Poller Lifecycle Integration', () => {
       } catch {
         // Already dead - expected
       }
+      spawnedPids.delete(child.pid);
     }
     child = null;
 
@@ -57,6 +73,8 @@ describe('Poller Lifecycle Integration', () => {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+
+    if (child.pid) spawnedPids.add(child.pid);
 
     // Capture stderr for debugging
     let stderr = '';
@@ -106,6 +124,7 @@ describe('Poller Lifecycle Integration', () => {
     `);
 
     child = spawn(process.execPath, [hungScript], { detached: true, stdio: 'ignore' });
+    if (child.pid) spawnedPids.add(child.pid);
     await sleep(100);
 
     // Verify process is running
@@ -131,6 +150,7 @@ describe('Poller Lifecycle Integration', () => {
     });
 
     const pid = shortProcess.pid!;
+    spawnedPids.add(pid);
 
     // Should be running
     expect(isProcessRunning(pid)).toBe(true);
