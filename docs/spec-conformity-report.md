@@ -26,9 +26,9 @@ This document grades the implementation against `SPEC.md` and identifies any dri
 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
-| 1 | mode=start spawns a background poller that persists across workflow steps | ✅ PASS | `main.ts:71` spawns via `spawnPoller()`, detached with `unref()` |
+| 1 | mode=start spawns a background poller that persists across workflow steps | ✅ PASS | `main.ts` (via `main:` hook) spawns via `spawnPoller()`, detached with `unref()`. **Note:** `mode` input dropped; uses lifecycle hooks instead. |
 | 2 | Poller polls /rate_limit every 30 seconds and updates constant-space reducer state | ✅ PASS | `poller.ts:245-261` loop with 30s interval; `reducer.ts` pure functions |
-| 3 | mode=stop terminates poller and produces summary | ✅ PASS | `post.ts` handles stop; `action.yml:20-21` uses `post:` with `post-if: always()` |
+| 3 | mode=stop terminates poller and produces summary | ✅ PASS | `post.ts` (via `post:` hook with `post-if: always()`) handles stop automatically. **Note:** `mode` input dropped; uses lifecycle hooks instead. |
 | 4 | Summary shows per-bucket usage totals, windows crossed, remaining quota, reset times | ✅ PASS | `output.ts:60-68` renders all fields in markdown table |
 | 5 | Warnings are emitted for poll failures, anomalies, and unsupported environments | ✅ PASS | `output.ts:178-204` generates warnings; `post.ts` adds platform warnings |
 | 6 | Token is never printed to logs | ✅ PASS | `main.ts:34` calls `core.setSecret(token)`; no debug logging of headers |
@@ -149,6 +149,12 @@ This document grades the implementation against `SPEC.md` and identifies any dri
 
 ## Drift Summary
 
+### Intentional Design Changes
+
+| Change | Spec | Implementation | Rationale |
+|--------|------|----------------|-----------|
+| **Dropped `mode` input** | `mode: start` / `mode: stop` requiring two workflow steps | Single step using `main:` + `post:` lifecycle hooks | Users configure ONE step; cleanup guaranteed by framework |
+
 ### Intentional Additions (Beyond Spec)
 
 | Addition | Reason | Impact |
@@ -157,7 +163,7 @@ This document grades the implementation against `SPEC.md` and identifies any dri
 | `MAX_LIFETIME_MS` (6 hours) | Defense-in-depth orphan prevention | Enhanced safety |
 | `FETCH_TIMEOUT_MS` (10s) | Prevent indefinite hangs | Enhanced reliability |
 | Kill verification + SIGKILL escalation | Ensure process termination | Enhanced reliability |
-| `post.ts` separate entry | Clean action.yml integration | Architectural refinement |
+| `post.ts` separate entry | Replaces `mode: stop`; uses action.yml `post:` hook | Better UX |
 | `poller-entry.ts` | ESM/ncc compatibility | Build system requirement |
 
 ### Missing from Spec (Should Document)
