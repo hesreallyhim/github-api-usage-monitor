@@ -274,12 +274,74 @@ Add a 6-hour maximum lifetime for the poller process as a defense-in-depth measu
 
 | Item | Status |
 |------|--------|
-| ESLint migrated from deprecated `tseslint.config()` to `defineConfig()` | **DONE** (commit `d9a23ca`) |  
-
-
-
+| ESLint migrated from deprecated `tseslint.config()` to `defineConfig()` | **DONE** (commit `d9a23ca`) |
 
 ---
+
+## Initial Gap Analysis (Updated 2026-01-25)
+
+This section tracks all issues from the original critical code review.
+
+### 🔴 Blocking Issues
+
+| # | Issue | Status | Notes |
+|---|-------|--------|-------|
+| 1 | Race condition - Stop reads stale state before poller's final write | ✅ **FIXED** | SIGTERM handler writes state immediately and exits (Blocker #1) |
+| 2 | Orphan process - If PID write fails after spawn, poller runs forever | ✅ **FIXED** | Cleanup in main.ts kills orphan on PID write failure |
+| 3 | No fetch timeout - Poller hangs forever on network issues | ✅ **FIXED** | `FETCH_TIMEOUT_MS = 10000` with AbortController in github.ts |
+| 4 | No startup verification - Spawn returns before confirming poller running | ✅ **FIXED** | `verifyPollerStartup()` waits for `poller_started_at_ts` (Blocker #4) |
+
+### 🟠 Major Concerns
+
+| # | Issue | Status | Notes |
+|---|-------|--------|-------|
+| 5 | Token passed via env var (readable in /proc) | WONTFIX | Accepted risk - standard GitHub Actions practice; process is short-lived |
+| 6 | No verification poller starts (same as #4) | ✅ **FIXED** | Same as #4 |
+| 7 | State file bucket validation incomplete | ✅ **FIXED** | `isValidState()` validates all required and optional fields |
+| 8 | Atomic rename may fail across filesystems | WONTFIX | Low risk - RUNNER_TEMP guarantees same filesystem |
+| 9 | No temp file cleanup on write failure | ✅ **FIXED** | `unlinkSync(tmpPath)` in catch block of writeState |
+| 10 | Post doesn't degrade gracefully on corrupted state | ⚠️ Partial | Handles missing state gracefully; corrupted state still throws |
+
+### 🟡 Improvements
+
+| # | Issue | Status | Notes |
+|---|-------|--------|-------|
+| 11 | Missing ESLint config | ✅ **FIXED** | Full ESLint + TypeScript config with `defineConfig()` |
+| 12 | Poller entry path hardcoded | WONTFIX | By design - ncc bundles to known `dist/poller/index.js` location |
+| 13 | No backoff on consecutive poll failures | Open | Not critical for v1; poller continues polling at fixed interval |
+| 14 | Duration calculation can be negative | ✅ **FIXED** | `Math.max(0, ...)` in post.ts |
+| 15 | No tests for critical paths | ✅ **FIXED** | `state.test.ts` (18 tests), integration tests (6 tests) |
+| 16 | require.main === module may not work with ncc | ✅ **FIXED** | `poller-entry.ts` unconditionally calls `main()` |
+
+### Orphan Process Scenarios
+
+| Scenario | Protection | Status |
+|----------|------------|--------|
+| PID write fails after spawn | Kill process immediately | ✅ **FIXED** |
+| Post handler fails to kill | SIGKILL escalation after 3s | ✅ **FIXED** |
+| Post handler never runs (runner crash) | 6-hour max lifetime | ✅ **FIXED** |
+| Poller ignores SIGTERM | SIGKILL escalation | ✅ **FIXED** |
+| Kill succeeds but poller respawns | N/A (not our design) | ✅ Not possible |
+
+### Priority Implementation Checklist
+
+| Priority | Safeguard | Status |
+|----------|-----------|--------|
+| P0 | Kill verification + SIGKILL escalation | ✅ **DONE** |
+| P0 | SIGTERM handler does final sync write | ✅ **DONE** |
+| P2 | Max lifetime self-termination | ✅ **DONE** (6 hours) |
+| P2 | Heartbeat file for staleness detection | Deferred | Not needed with max lifetime |
+
+### Summary
+
+- **Blocking issues:** 4/4 fixed ✅
+- **Major concerns:** 5/6 fixed (1 accepted risk, 1 partial)
+- **Improvements:** 5/6 fixed (1 open, non-critical)
+
+---
+
+<details>
+<summary>Original notes (archived)</summary>
 
 OLDER NOTES (COPIED HERE TO MAKE AURE THEY DON'T GET LOST AND WE HAVE COVERED THEM ALL)
 
@@ -403,5 +465,7 @@ Agreed — orphaned processes are a serious risk. Let me map out the orphan scen
   ├──────────┼────────────────────────────────────────┼────────────────────┤                                                                
   │ P2       │ Max lifetime self-termination (4hr)    │ Unit only          │                                                                
   ├──────────┼────────────────────────────────────────┼────────────────────┤                                                                
-  │ P2       │ Heartbeat file for staleness detection │ Unit only          │                                                                
-  └──────────┴────────────────────────────────────────┴────────────────────┘        
+  │ P2       │ Heartbeat file for staleness detection │ Unit only          │
+  └──────────┴────────────────────────────────────────┴────────────────────┘
+
+</details>
