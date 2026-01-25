@@ -722,13 +722,17 @@ function sleep(ms) {
  */
 async function runPollerLoop(token, intervalSeconds) {
     let running = true;
-    // Handle graceful shutdown
+    let state;
+    // Handle graceful shutdown - write state immediately before exiting
     process.on('SIGTERM', () => {
         running = false;
+        if (state) {
+            writeState(state);
+        }
+        process.exit(0);
     });
     // Initial state or read existing
     const stateResult = readState();
-    let state;
     if (stateResult.success) {
         state = stateResult.state;
     }
