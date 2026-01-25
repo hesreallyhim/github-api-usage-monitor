@@ -7,9 +7,6 @@ branding:
   color: gray-dark
 
 inputs:
-  mode:
-    description: 'start or stop the monitor'
-    required: true
   token:
     description: 'GitHub token (defaults to GITHUB_TOKEN)'
     required: false
@@ -20,3 +17,5 @@ outputs: {}
 runs:
   using: node20
   main: dist/main.js
+  post: dist/post.js
+  post-if: always()

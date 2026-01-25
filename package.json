@@ -6,8 +6,9 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "ncc build src/main.ts -o dist --source-map --license licenses.txt && mv dist/index.js dist/main.js && mv dist/index.js.map dist/main.js.map",
+    "build:post": "ncc build src/post.ts -o dist/post-tmp --source-map && mv dist/post-tmp/index.js dist/post.js && mv dist/post-tmp/index.js.map dist/post.js.map && rm -rf dist/post-tmp",
     "build:poller": "ncc build src/poller.ts -o dist/poller --source-map",
-    "build:all": "npm run build && npm run build:poller",
+    "build:all": "npm run build && npm run build:post && npm run build:poller",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
