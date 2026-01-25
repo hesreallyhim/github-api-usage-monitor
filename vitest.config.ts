@@ -10,7 +10,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       include: ['src/**/*.ts'],
-      exclude: ['src/main.ts', 'src/poller.ts'], // Entry points tested via integration
+      exclude: ['src/main.ts', 'src/post.ts', 'src/poller-entry.ts'], // Entry points tested via integration
     },
   },
 });
