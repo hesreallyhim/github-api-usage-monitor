@@ -202,8 +202,9 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Entry point when run as child process.
+ * Exported for use by poller-entry.ts
  */
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const token = process.env['GITHUB_API_MONITOR_TOKEN'];
   const intervalStr = process.env['GITHUB_API_MONITOR_INTERVAL'];
 
@@ -217,10 +218,5 @@ async function main(): Promise<void> {
   await runPollerLoop(token, interval);
 }
 
-// Run if this is the entry point
-if (require.main === module) {
-  main().catch((err) => {
-    console.error('Poller error:', err);
-    process.exit(1);
-  });
-}
+// Entry point moved to poller-entry.ts for ESM compatibility
+// See: poller-entry.ts is built as dist/poller/index.js

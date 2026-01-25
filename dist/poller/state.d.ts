@@ -38,6 +38,7 @@ export type WriteStateOutcome = WriteStateResult | WriteStateError;
 /**
  * Writes reducer state to disk atomically.
  * Creates state directory if it doesn't exist.
+ * Cleans up temp file on failure to prevent orphaned files.
  *
  * @param state - State to persist
  */
@@ -46,7 +47,7 @@ export declare function writeState(state: ReducerState): WriteStateOutcome;
  * Validates that parsed JSON has the ReducerState shape.
  * Handles missing fields gracefully per spec (W4).
  */
-export declare function isValidState(value: unknown): value is ReducerState;
+export declare function isValidState(obj: unknown): obj is ReducerState;
 /**
  * Writes the poller PID to disk.
  */

@@ -1,15 +1,10 @@
 import './sourcemap-register.cjs';import { createRequire as __WEBPACK_EXTERNAL_createRequire } from "module";
-/******/ var __webpack_modules__ = ({
-
-/***/ 65:
-/***/ ((module, __webpack_exports__, __nccwpck_require__) => {
-
-
-// EXPORTS
-__nccwpck_require__.d(__webpack_exports__, {
-  F: () => (/* binding */ killPoller),
-  s: () => (/* binding */ spawnPoller)
-});
+/******/ /* webpack/runtime/compat */
+/******/ 
+/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = new URL('.', import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
+/******/ 
+/************************************************************************/
+var __webpack_exports__ = {};
 
 ;// CONCATENATED MODULE: external "child_process"
 const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("child_process");
@@ -26,10 +21,20 @@ const external_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.me
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
-const POLL_INTERVAL_SECONDS = 30;
+const types_POLL_INTERVAL_SECONDS = 30;
 const STATE_DIR_NAME = 'github-api-usage-monitor';
 const STATE_FILE_NAME = 'state.json';
 const types_PID_FILE_NAME = 'poller.pid';
+/** Timeout for fetch requests to GitHub API (milliseconds) */
+const FETCH_TIMEOUT_MS = 10000;
+
+;// CONCATENATED MODULE: ./src/utils.ts
+/**
+ * Checks if input is an object and not null.
+ */
+const isARealObject = (value) => {
+    return typeof value === 'object' && value !== null;
+};
 
 ;// CONCATENATED MODULE: ./src/github.ts
 /**
@@ -41,6 +46,8 @@ const types_PID_FILE_NAME = 'poller.pid';
  *
  * Fetches rate limit data from the GitHub API.
  */
+
+
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
@@ -54,8 +61,12 @@ const USER_AGENT = 'github-api-usage-monitor/1.0';
  */
 async function fetchRateLimit(token) {
     const timestamp = new Date().toISOString();
+    // Set up abort controller with timeout to prevent indefinite hangs
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
         const response = await fetch(RATE_LIMIT_URL, {
+            signal: controller.signal,
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -64,6 +75,7 @@ async function fetchRateLimit(token) {
                 'X-GitHub-Api-Version': '2022-11-28',
             },
         });
+        clearTimeout(timeoutId);
         if (!response.ok) {
             const statusText = response.statusText || 'Unknown error';
             return {
@@ -88,7 +100,16 @@ async function fetchRateLimit(token) {
         };
     }
     catch (err) {
+        clearTimeout(timeoutId);
         const error = err;
+        // Handle abort error specifically (timeout)
+        if (error.name === 'AbortError') {
+            return {
+                success: false,
+                error: `Request timeout: GitHub API did not respond within ${FETCH_TIMEOUT_MS}ms`,
+                timestamp,
+            };
+        }
         return {
             success: false,
             error: `Network error: ${error.message}`,
@@ -104,62 +125,35 @@ async function fetchRateLimit(token) {
  * Used for defensive parsing.
  */
 function isValidSample(sample) {
-    if (typeof sample !== 'object' || sample === null) {
+    if (!isARealObject(sample)) {
         return false;
     }
-    const s = sample;
-    return (typeof s['limit'] === 'number' &&
-        typeof s['used'] === 'number' &&
-        typeof s['remaining'] === 'number' &&
-        typeof s['reset'] === 'number');
+    const requiredFields = ['limit', 'used', 'remaining', 'reset'];
+    return requiredFields.every(field => typeof sample[field] === 'number');
 }
 /**
  * Parses raw API response into typed RateLimitResponse.
  * Returns null if parsing fails.
  */
 function parseRateLimitResponse(raw) {
-    if (typeof raw !== 'object' || raw === null) {
+    if (!isARealObject(raw) || !isARealObject(raw['resources'])) {
         return null;
     }
-    const obj = raw;
-    // Validate resources exists and is an object
-    if (typeof obj['resources'] !== 'object' || obj['resources'] === null) {
-        return null;
-    }
-    const rawResources = obj['resources'];
     const resources = {};
-    // Validate each resource is a valid sample
-    for (const [key, value] of Object.entries(rawResources)) {
+    for (const [key, value] of Object.entries(raw['resources'])) {
         if (!isValidSample(value)) {
             return null;
         }
-        resources[key] = {
-            limit: value.limit,
-            used: value.used,
-            remaining: value.remaining,
-            reset: value.reset,
-        };
+        resources[key] = value;
     }
-    // Validate rate exists and is valid (deprecated but still returned)
-    const rawRate = obj['rate'];
+    // Use rate if valid, otherwise fall back to resources.core
+    const rawRate = raw['rate'];
     if (isValidSample(rawRate)) {
-        return {
-            resources,
-            rate: {
-                limit: rawRate.limit,
-                used: rawRate.used,
-                remaining: rawRate.remaining,
-                reset: rawRate.reset,
-            },
-        };
+        return { resources, rate: rawRate };
     }
-    // If rate is missing but resources.core exists, use that as fallback
     const coreResource = resources['core'];
     if (coreResource) {
-        return {
-            resources,
-            rate: coreResource,
-        };
+        return { resources, rate: coreResource };
     }
     return null;
 }
@@ -280,7 +274,7 @@ function createInitialState() {
         buckets: {},
         started_at_ts: new Date().toISOString(),
         stopped_at_ts: null,
-        interval_seconds: POLL_INTERVAL_SECONDS,
+        interval_seconds: types_POLL_INTERVAL_SECONDS,
         poll_count: 0,
         poll_failures: 0,
         last_error: null,
@@ -458,6 +452,7 @@ function readState() {
 /**
  * Writes reducer state to disk atomically.
  * Creates state directory if it doesn't exist.
+ * Cleans up temp file on failure to prevent orphaned files.
  *
  * @param state - State to persist
  */
@@ -476,6 +471,13 @@ function writeState(state) {
         return { success: true };
     }
     catch (err) {
+        // Clean up temp file on failure to prevent orphaned files
+        try {
+            external_fs_namespaceObject.unlinkSync(tmpPath);
+        }
+        catch {
+            // Ignore cleanup errors - file may not exist
+        }
         const error = err;
         return {
             success: false,
@@ -490,13 +492,12 @@ function writeState(state) {
  * Validates that parsed JSON has the ReducerState shape.
  * Handles missing fields gracefully per spec (W4).
  */
-function isValidState(value) {
-    if (typeof value !== 'object' || value === null) {
+function isValidState(obj) {
+    if (!isARealObject(obj)) {
         return false;
     }
-    const obj = value;
     // Required fields
-    if (typeof obj['buckets'] !== 'object' || obj['buckets'] === null) {
+    if (!isARealObject(obj['buckets'])) {
         return false;
     }
     if (typeof obj['started_at_ts'] !== 'string') {
@@ -519,6 +520,7 @@ function isValidState(value) {
 // -----------------------------------------------------------------------------
 // PID file management
 // -----------------------------------------------------------------------------
+
 
 /**
  * Writes the poller PID to disk.
@@ -567,7 +569,6 @@ function removePid() {
 }
 
 ;// CONCATENATED MODULE: ./src/poller.ts
-/* module decorator */ module = __nccwpck_require__.hmd(module);
 /**
  * Poller Process
  * Layer: poller
@@ -601,8 +602,8 @@ function spawnPoller(token) {
     try {
         // Resolve path to bundled poller entry
         // ncc bundles to dist/poller/index.js
-        const pollerEntry = external_path_namespaceObject.resolve(__dirname, 'poller', 'index.js');
-        const child = (0,external_child_process_namespaceObject.spawn)(process.execPath, [pollerEntry], {
+        const pollerEntry = path.resolve(__dirname, 'poller', 'index.js');
+        const child = spawn(process.execPath, [pollerEntry], {
             detached: true,
             stdio: 'ignore',
             env: {
@@ -713,6 +714,7 @@ function sleep(ms) {
 // -----------------------------------------------------------------------------
 /**
  * Entry point when run as child process.
+ * Exported for use by poller-entry.ts
  */
 async function main() {
     const token = process.env['GITHUB_API_MONITOR_TOKEN'];
@@ -721,104 +723,27 @@ async function main() {
         console.error('GITHUB_API_MONITOR_TOKEN not set');
         process.exit(1);
     }
-    const interval = intervalStr ? parseInt(intervalStr, 10) : POLL_INTERVAL_SECONDS;
+    const interval = intervalStr ? parseInt(intervalStr, 10) : types_POLL_INTERVAL_SECONDS;
     await runPollerLoop(token, interval);
 }
-// Run if this is the entry point
-if (__nccwpck_require__.c[__nccwpck_require__.s] === module) {
-    main().catch((err) => {
-        console.error('Poller error:', err);
-        process.exit(1);
-    });
-}
+// Entry point moved to poller-entry.ts for ESM compatibility
+// See: poller-entry.ts is built as dist/poller/index.js
 
+;// CONCATENATED MODULE: ./src/poller-entry.ts
+/**
+ * Poller Entry Point
+ *
+ * Separate entry file for ESM compatibility.
+ * The require.main === module pattern doesn't work with ncc ESM bundling,
+ * so we use a dedicated entry file that unconditionally calls main().
+ *
+ * Built as: dist/poller/index.js
+ */
 
-/***/ })
+main().catch((err) => {
+    console.error('Poller error:', err);
+    process.exit(1);
+});
 
-/******/ });
-/************************************************************************/
-/******/ // The module cache
-/******/ var __webpack_module_cache__ = {};
-/******/ 
-/******/ // The require function
-/******/ function __nccwpck_require__(moduleId) {
-/******/ 	// Check if module is in cache
-/******/ 	var cachedModule = __webpack_module_cache__[moduleId];
-/******/ 	if (cachedModule !== undefined) {
-/******/ 		return cachedModule.exports;
-/******/ 	}
-/******/ 	// Create a new module (and put it into the cache)
-/******/ 	var module = __webpack_module_cache__[moduleId] = {
-/******/ 		id: moduleId,
-/******/ 		loaded: false,
-/******/ 		exports: {}
-/******/ 	};
-/******/ 
-/******/ 	// Execute the module function
-/******/ 	var threw = true;
-/******/ 	try {
-/******/ 		__webpack_modules__[moduleId](module, module.exports, __nccwpck_require__);
-/******/ 		threw = false;
-/******/ 	} finally {
-/******/ 		if(threw) delete __webpack_module_cache__[moduleId];
-/******/ 	}
-/******/ 
-/******/ 	// Flag the module as loaded
-/******/ 	module.loaded = true;
-/******/ 
-/******/ 	// Return the exports of the module
-/******/ 	return module.exports;
-/******/ }
-/******/ 
-/******/ // expose the module cache
-/******/ __nccwpck_require__.c = __webpack_module_cache__;
-/******/ 
-/************************************************************************/
-/******/ /* webpack/runtime/define property getters */
-/******/ (() => {
-/******/ 	// define getter functions for harmony exports
-/******/ 	__nccwpck_require__.d = (exports, definition) => {
-/******/ 		for(var key in definition) {
-/******/ 			if(__nccwpck_require__.o(definition, key) && !__nccwpck_require__.o(exports, key)) {
-/******/ 				Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
-/******/ 			}
-/******/ 		}
-/******/ 	};
-/******/ })();
-/******/ 
-/******/ /* webpack/runtime/harmony module decorator */
-/******/ (() => {
-/******/ 	__nccwpck_require__.hmd = (module) => {
-/******/ 		module = Object.create(module);
-/******/ 		if (!module.children) module.children = [];
-/******/ 		Object.defineProperty(module, 'exports', {
-/******/ 			enumerable: true,
-/******/ 			set: () => {
-/******/ 				throw new Error('ES Modules may not assign module.exports or exports.*, Use ESM export syntax, instead: ' + module.id);
-/******/ 			}
-/******/ 		});
-/******/ 		return module;
-/******/ 	};
-/******/ })();
-/******/ 
-/******/ /* webpack/runtime/hasOwnProperty shorthand */
-/******/ (() => {
-/******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
-/******/ })();
-/******/ 
-/******/ /* webpack/runtime/compat */
-/******/ 
-/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = new URL('.', import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
-/******/ 
-/************************************************************************/
-/******/ 
-/******/ // module cache are used so entry inlining is disabled
-/******/ // startup
-/******/ // Load entry module and return exports
-/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 65);
-/******/ var __webpack_exports__killPoller = __webpack_exports__.F;
-/******/ var __webpack_exports__spawnPoller = __webpack_exports__.s;
-/******/ export { __webpack_exports__killPoller as killPoller, __webpack_exports__spawnPoller as spawnPoller };
-/******/ 
 
 //# sourceMappingURL=index.js.map

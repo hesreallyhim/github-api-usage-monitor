@@ -48,3 +48,8 @@ export type KillOutcome = KillResult | KillError;
  * @param pid - Process ID to kill
  */
 export declare function killPoller(pid: number): KillOutcome;
+/**
+ * Entry point when run as child process.
+ * Exported for use by poller-entry.ts
+ */
+export declare function main(): Promise<void>;
