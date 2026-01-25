@@ -10,6 +10,7 @@
 
 import type { RateLimitResponse, RateLimitSample } from './types';
 import { FETCH_TIMEOUT_MS } from './types';
+import { isARealObject } from './utils';
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -119,16 +120,11 @@ export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutco
  * Used for defensive parsing.
  */
 export function isValidSample(sample: unknown): sample is RateLimitSample {
-  if (typeof sample !== 'object' || sample === null) {
+  if (!isARealObject(sample)) {
     return false;
   }
-  const s = sample as Record<string, unknown>;
-  return (
-    typeof s['limit'] === 'number' &&
-    typeof s['used'] === 'number' &&
-    typeof s['remaining'] === 'number' &&
-    typeof s['reset'] === 'number'
-  );
+  const requiredFields = ['limit', 'used', 'remaining', 'reset'];
+  return requiredFields.every(field => typeof sample[field] === 'number');
 }
 
 /**
@@ -136,54 +132,28 @@ export function isValidSample(sample: unknown): sample is RateLimitSample {
  * Returns null if parsing fails.
  */
 export function parseRateLimitResponse(raw: unknown): RateLimitResponse | null {
-  if (typeof raw !== 'object' || raw === null) {
+  if (!isARealObject(raw) || !isARealObject(raw['resources'])) {
     return null;
   }
 
-  const obj = raw as Record<string, unknown>;
-
-  // Validate resources exists and is an object
-  if (typeof obj['resources'] !== 'object' || obj['resources'] === null) {
-    return null;
-  }
-
-  const rawResources = obj['resources'] as Record<string, unknown>;
   const resources: Record<string, RateLimitSample> = {};
 
-  // Validate each resource is a valid sample
-  for (const [key, value] of Object.entries(rawResources)) {
+  for (const [key, value] of Object.entries(raw['resources'])) {
     if (!isValidSample(value)) {
       return null;
     }
-    resources[key] = {
-      limit: value.limit,
-      used: value.used,
-      remaining: value.remaining,
-      reset: value.reset,
-    };
+    resources[key] = value;
   }
 
-  // Validate rate exists and is valid (deprecated but still returned)
-  const rawRate = obj['rate'];
+  // Use rate if valid, otherwise fall back to resources.core
+  const rawRate = raw['rate'];
   if (isValidSample(rawRate)) {
-    return {
-      resources,
-      rate: {
-        limit: rawRate.limit,
-        used: rawRate.used,
-        remaining: rawRate.remaining,
-        reset: rawRate.reset,
-      },
-    };
+    return { resources, rate: rawRate };
   }
 
-  // If rate is missing but resources.core exists, use that as fallback
   const coreResource = resources['core'];
   if (coreResource) {
-    return {
-      resources,
-      rate: coreResource,
-    };
+    return { resources, rate: coreResource };
   }
 
   return null;

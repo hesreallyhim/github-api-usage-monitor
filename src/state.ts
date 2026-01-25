@@ -134,15 +134,13 @@ export function writeState(state: ReducerState): WriteStateOutcome {
  * Validates that parsed JSON has the ReducerState shape.
  * Handles missing fields gracefully per spec (W4).
  */
-export function isValidState(value: unknown): value is ReducerState {
-  if (typeof value !== 'object' || value === null) {
+export function isValidState(obj: unknown): obj is ReducerState {
+  if (!isARealObject(obj)) {
     return false;
   }
 
-  const obj = value as Record<string, unknown>;
-
-  // Required fields
-  if (typeof obj['buckets'] !== 'object' || obj['buckets'] === null) {
+    // Required fields
+  if (!isARealObject(obj['buckets'])) {
     return false;
   }
   if (typeof obj['started_at_ts'] !== 'string') {
@@ -170,6 +168,7 @@ export function isValidState(value: unknown): value is ReducerState {
 // -----------------------------------------------------------------------------
 
 import { getPidPath } from './paths';
+import { isARealObject } from './utils';
 
 /**
  * Writes the poller PID to disk.
