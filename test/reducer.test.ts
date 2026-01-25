@@ -161,7 +161,7 @@ describe('updateBucket - anomalies', () => {
   });
 
   it('increments anomaly counter on multiple anomalies', () => {
-    let bucket = makeBucket({ last_used: 100, anomalies: 2 });
+    const bucket = makeBucket({ last_used: 100, anomalies: 2 });
     const reset = bucket.last_reset;
 
     const result = updateBucket(bucket, makeSample({ used: 50, reset }), 'ts');
@@ -241,7 +241,7 @@ describe('reduce', () => {
       search: makeSample({ used: 5 }),
     });
 
-    const { state: newState, updates } = reduce(state, response, 'ts');
+    const { state: newState } = reduce(state, response, 'ts');
 
     expect(Object.keys(newState.buckets)).toHaveLength(2);
     expect(newState.buckets['core']?.total_used).toBe(0);

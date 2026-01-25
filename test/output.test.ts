@@ -196,13 +196,22 @@ describe('renderConsole', () => {
   });
 
   it('shows top 3 buckets', () => {
+    const baseBucket = {
+      last_reset: 1706230800,
+      last_used: 0,
+      windows_crossed: 0,
+      anomalies: 0,
+      last_seen_ts: 'ts',
+      limit: 5000,
+      remaining: 5000,
+    };
     const data = makeSummaryData({
       state: makeState({
         buckets: {
-          bucket1: { total_used: 100 } as any,
-          bucket2: { total_used: 80 } as any,
-          bucket3: { total_used: 60 } as any,
-          bucket4: { total_used: 40 } as any,
+          bucket1: { ...baseBucket, total_used: 100, remaining: 4900 },
+          bucket2: { ...baseBucket, total_used: 80, remaining: 4920 },
+          bucket3: { ...baseBucket, total_used: 60, remaining: 4940 },
+          bucket4: { ...baseBucket, total_used: 40, remaining: 4960 },
         },
       }),
     });
@@ -236,11 +245,18 @@ describe('generateWarnings', () => {
   });
 
   it('warns on anomalies', () => {
+    const baseBucket = {
+      last_reset: 1706230800,
+      last_used: 0,
+      total_used: 0,
+      windows_crossed: 0,
+      last_seen_ts: 'ts',
+      limit: 5000,
+      remaining: 5000,
+    };
     const state = makeState({
       buckets: {
-        core: {
-          anomalies: 3,
-        } as any,
+        core: { ...baseBucket, anomalies: 3 },
       },
     });
     const warnings = generateWarnings(state);
@@ -249,13 +265,18 @@ describe('generateWarnings', () => {
   });
 
   it('warns on multiple window crosses', () => {
+    const baseBucket = {
+      last_reset: 1706230800,
+      last_used: 0,
+      total_used: 0,
+      anomalies: 0,
+      last_seen_ts: 'ts',
+      limit: 5000,
+      remaining: 5000,
+    };
     const state = makeState({
       buckets: {
-        search: {
-          windows_crossed: 5,
-          anomalies: 0,
-          total_used: 0,
-        } as any,
+        search: { ...baseBucket, windows_crossed: 5 },
       },
     });
     const warnings = generateWarnings(state);
@@ -272,14 +293,19 @@ describe('generateWarnings', () => {
   });
 
   it('returns empty array when no issues', () => {
+    const baseBucket = {
+      last_reset: 1706230800,
+      last_used: 0,
+      total_used: 0,
+      last_seen_ts: 'ts',
+      limit: 5000,
+      remaining: 5000,
+    };
     const state = makeState({
       poll_failures: 0,
       last_error: null,
       buckets: {
-        core: {
-          anomalies: 0,
-          windows_crossed: 0,
-        } as any,
+        core: { ...baseBucket, anomalies: 0, windows_crossed: 0 },
       },
     });
     const warnings = generateWarnings(state);

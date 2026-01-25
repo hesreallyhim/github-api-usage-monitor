@@ -11,6 +11,13 @@
 import type { RateLimitResponse, RateLimitSample } from './types';
 
 // -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+
+const RATE_LIMIT_URL = 'https://api.github.com/rate_limit';
+const USER_AGENT = 'github-api-usage-monitor/1.0';
+
+// -----------------------------------------------------------------------------
 // Port: github.fetchRateLimit
 // -----------------------------------------------------------------------------
 
@@ -37,12 +44,50 @@ export type FetchRateLimitOutcome = FetchRateLimitResult | FetchRateLimitError;
 export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutcome> {
   const timestamp = new Date().toISOString();
 
-  // TODO: Implement
-  // - Make GET request to https://api.github.com/rate_limit
-  // - Set Authorization header with token
-  // - Parse response as RateLimitResponse
-  // - Handle errors gracefully (network, auth, parse)
-  throw new Error('Not implemented: github.fetchRateLimit');
+  try {
+    const response = await fetch(RATE_LIMIT_URL, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': USER_AGENT,
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+
+    if (!response.ok) {
+      const statusText = response.statusText || 'Unknown error';
+      return {
+        success: false,
+        error: `HTTP ${response.status}: ${statusText}`,
+        timestamp,
+      };
+    }
+
+    const raw: unknown = await response.json();
+    const parsed = parseRateLimitResponse(raw);
+
+    if (!parsed) {
+      return {
+        success: false,
+        error: 'Failed to parse rate limit response',
+        timestamp,
+      };
+    }
+
+    return {
+      success: true,
+      data: parsed,
+      timestamp,
+    };
+  } catch (err) {
+    const error = err as Error;
+    return {
+      success: false,
+      error: `Network error: ${error.message}`,
+      timestamp,
+    };
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -71,9 +116,55 @@ export function isValidSample(sample: unknown): sample is RateLimitSample {
  * Returns null if parsing fails.
  */
 export function parseRateLimitResponse(raw: unknown): RateLimitResponse | null {
-  // TODO: Implement
-  // - Validate resources is an object
-  // - Validate each resource is a valid sample
-  // - Validate rate is a valid sample
-  throw new Error('Not implemented: parseRateLimitResponse');
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+
+  const obj = raw as Record<string, unknown>;
+
+  // Validate resources exists and is an object
+  if (typeof obj['resources'] !== 'object' || obj['resources'] === null) {
+    return null;
+  }
+
+  const rawResources = obj['resources'] as Record<string, unknown>;
+  const resources: Record<string, RateLimitSample> = {};
+
+  // Validate each resource is a valid sample
+  for (const [key, value] of Object.entries(rawResources)) {
+    if (!isValidSample(value)) {
+      return null;
+    }
+    resources[key] = {
+      limit: value.limit,
+      used: value.used,
+      remaining: value.remaining,
+      reset: value.reset,
+    };
+  }
+
+  // Validate rate exists and is valid (deprecated but still returned)
+  const rawRate = obj['rate'];
+  if (isValidSample(rawRate)) {
+    return {
+      resources,
+      rate: {
+        limit: rawRate.limit,
+        used: rawRate.used,
+        remaining: rawRate.remaining,
+        reset: rawRate.reset,
+      },
+    };
+  }
+
+  // If rate is missing but resources.core exists, use that as fallback
+  const coreResource = resources['core'];
+  if (coreResource) {
+    return {
+      resources,
+      rate: coreResource,
+    };
+  }
+
+  return null;
 }

@@ -18,7 +18,6 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import type { ReducerState } from './types';
 import { POLL_INTERVAL_SECONDS } from './types';
 import { fetchRateLimit } from './github';
@@ -49,8 +48,9 @@ export type SpawnOutcome = SpawnResult | SpawnError;
  */
 export function spawnPoller(token: string): SpawnOutcome {
   try {
-    // Resolve path to this file for child process entry
-    const pollerEntry = path.resolve(__dirname, 'poller.js');
+    // Resolve path to bundled poller entry
+    // ncc bundles to dist/poller/index.js
+    const pollerEntry = path.resolve(__dirname, 'poller', 'index.js');
 
     const child: ChildProcess = spawn(
       process.execPath,
@@ -146,7 +146,7 @@ async function runPollerLoop(token: string, intervalSeconds: number): Promise<vo
   });
 
   // Initial state or read existing
-  let stateResult = readState();
+  const stateResult = readState();
   let state: ReducerState;
 
   if (stateResult.success) {

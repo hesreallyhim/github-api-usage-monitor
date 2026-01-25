@@ -11,7 +11,6 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import type { ReducerState } from './types';
 import { getStateDir, getStatePath, getStateTmpPath } from './paths';
 

@@ -16,8 +16,9 @@ import type { ActionMode, SummaryData } from './types';
 import { assertSupported, isSupported } from './platform';
 import { spawnPoller, killPoller } from './poller';
 import { readState, writeState, writePid, readPid, removePid } from './state';
-import { createInitialState, markStopped } from './reducer';
+import { createInitialState, markStopped, reduce } from './reducer';
 import { render, writeStepSummary, generateWarnings } from './output';
+import { fetchRateLimit } from './github';
 
 // -----------------------------------------------------------------------------
 // Action entry point
@@ -40,10 +41,12 @@ async function run(): Promise<void> {
         await handleStart(token);
         break;
       case 'stop':
-        await handleStop();
+        handleStop();
         break;
-      default:
-        throw new Error(`Invalid mode: ${mode}. Must be 'start' or 'stop'.`);
+      default: {
+        const invalidMode: string = mode;
+        throw new Error(`Invalid mode: ${invalidMode}. Must be 'start' or 'stop'.`);
+      }
     }
   } catch (error) {
     const err = error as Error;
@@ -61,8 +64,18 @@ async function handleStart(token: string): Promise<void> {
   // Validate platform
   assertSupported();
 
-  // Create initial state
-  const state = createInitialState();
+  // Initial poll to validate token and establish baseline (fail-fast)
+  core.info('Validating token with initial API call...');
+  const initialPoll = await fetchRateLimit(token);
+  if (!initialPoll.success) {
+    throw new Error(`Token validation failed: ${initialPoll.error}`);
+  }
+
+  // Create initial state with baseline from first poll
+  let state = createInitialState();
+  const reduceResult = reduce(state, initialPoll.data, initialPoll.timestamp);
+  state = reduceResult.state;
+
   const writeResult = writeState(state);
   if (!writeResult.success) {
     throw new Error(`Failed to write initial state: ${writeResult.error}`);
@@ -80,14 +93,15 @@ async function handleStart(token: string): Promise<void> {
     throw new Error(`Failed to write PID: ${pidResult.error}`);
   }
 
-  core.info(`Monitor started (PID: ${spawnResult.pid})`);
+  const bucketCount = Object.keys(state.buckets).length;
+  core.info(`Monitor started (PID: ${spawnResult.pid}, tracking ${bucketCount} buckets)`);
 }
 
 // -----------------------------------------------------------------------------
 // Stop mode
 // -----------------------------------------------------------------------------
 
-async function handleStop(): Promise<void> {
+function handleStop(): void {
   core.info('Stopping GitHub API usage monitor...');
 
   const warnings: string[] = [];
@@ -102,10 +116,12 @@ async function handleStop(): Promise<void> {
   const pid = readPid();
   if (pid) {
     const killResult = killPoller(pid);
-    if (!killResult.success && !killResult.notFound) {
-      warnings.push(`Failed to kill poller: ${killResult.error}`);
-    } else if (killResult.notFound) {
-      warnings.push('Poller process not found (may have exited)');
+    if (!killResult.success) {
+      if (killResult.notFound) {
+        warnings.push('Poller process not found (may have exited)');
+      } else {
+        warnings.push(`Failed to kill poller: ${killResult.error}`);
+      }
     }
     removePid();
   } else {
@@ -157,4 +173,4 @@ async function handleStop(): Promise<void> {
 // Run
 // -----------------------------------------------------------------------------
 
-run();
+void run();

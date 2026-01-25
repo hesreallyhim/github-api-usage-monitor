@@ -74,12 +74,60 @@ export function updateBucket(
   sample: RateLimitSample,
   timestamp: string
 ): UpdateResult {
-  // TODO: Implement
-  // - Check if reset changed (window boundary)
-  // - Calculate delta if same window
-  // - Detect anomalies (delta < 0)
-  // - Return updated state and metadata
-  throw new Error('Not implemented: reducer.updateBucket');
+  // Check if reset changed (window boundary)
+  if (sample.reset !== bucket.last_reset) {
+    // New window: include post-reset used count
+    return {
+      bucket: {
+        last_reset: sample.reset,
+        last_used: sample.used,
+        total_used: bucket.total_used + sample.used,
+        windows_crossed: bucket.windows_crossed + 1,
+        anomalies: bucket.anomalies,
+        last_seen_ts: timestamp,
+        limit: sample.limit,
+        remaining: sample.remaining,
+      },
+      delta: sample.used,
+      anomaly: false,
+      window_crossed: true,
+    };
+  }
+
+  // Same window: calculate delta
+  const delta = sample.used - bucket.last_used;
+
+  if (delta < 0) {
+    // Anomaly: used decreased without reset change
+    return {
+      bucket: {
+        ...bucket,
+        last_used: sample.used,
+        anomalies: bucket.anomalies + 1,
+        last_seen_ts: timestamp,
+        limit: sample.limit,
+        remaining: sample.remaining,
+      },
+      delta: 0,
+      anomaly: true,
+      window_crossed: false,
+    };
+  }
+
+  // Normal case: accumulate delta
+  return {
+    bucket: {
+      ...bucket,
+      last_used: sample.used,
+      total_used: bucket.total_used + delta,
+      last_seen_ts: timestamp,
+      limit: sample.limit,
+      remaining: sample.remaining,
+    },
+    delta,
+    anomaly: false,
+    window_crossed: false,
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -125,12 +173,39 @@ export function reduce(
   response: RateLimitResponse,
   timestamp: string
 ): ReduceResult {
-  // TODO: Implement
-  // - Iterate over all buckets in response.resources
-  // - For each bucket: initBucket or updateBucket
-  // - Increment poll_count
-  // - Return new state and per-bucket results
-  throw new Error('Not implemented: reducer.reduce');
+  const newBuckets: Record<string, BucketState> = { ...state.buckets };
+  const updates: Record<string, UpdateResult> = {};
+
+  // Process each bucket in the response
+  for (const [name, sample] of Object.entries(response.resources)) {
+    const existingBucket = state.buckets[name];
+
+    if (!existingBucket) {
+      // New bucket: initialize
+      const bucket = initBucket(sample, timestamp);
+      newBuckets[name] = bucket;
+      updates[name] = {
+        bucket,
+        delta: 0,
+        anomaly: false,
+        window_crossed: false,
+      };
+    } else {
+      // Existing bucket: update
+      const result = updateBucket(existingBucket, sample, timestamp);
+      newBuckets[name] = result.bucket;
+      updates[name] = result;
+    }
+  }
+
+  return {
+    state: {
+      ...state,
+      buckets: newBuckets,
+      poll_count: state.poll_count + 1,
+    },
+    updates,
+  };
 }
 
 /**

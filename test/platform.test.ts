@@ -4,7 +4,7 @@
  * Tests for OS detection and support validation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as os from 'os';
 
 // We need to mock os.platform before importing the module
