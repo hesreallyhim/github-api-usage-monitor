@@ -2,12 +2,12 @@
  * Main Entry
  * Layer: action
  *
- * GitHub Action entry point dispatching start/stop modes.
+ * GitHub Action main entry point. Spawns the background poller.
+ * Cleanup and reporting is handled by post.ts (via action.yml post entry).
  *
  * Required ports:
  *   - poller.spawn
- *   - poller.kill
- *   - state.read
- *   - output.render
+ *   - state.write
+ *   - github.fetchRateLimit
  */
 export {};

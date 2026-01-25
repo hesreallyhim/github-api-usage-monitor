@@ -25807,13 +25807,24 @@ module.exports = {
 
 /***/ }),
 
-/***/ 9248:
-/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+/***/ 6553:
+/***/ ((module, __webpack_exports__, __nccwpck_require__) => {
 
-/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
-/* harmony export */   AD: () => (/* binding */ fetchRateLimit)
-/* harmony export */ });
-/* unused harmony exports isValidSample, parseRateLimitResponse */
+
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  F: () => (/* binding */ killPoller)
+});
+
+// UNUSED EXPORTS: spawnPoller
+
+// EXTERNAL MODULE: external "child_process"
+var external_child_process_ = __nccwpck_require__(5317);
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(6928);
+// EXTERNAL MODULE: ./src/types.ts
+var types = __nccwpck_require__(8522);
+;// CONCATENATED MODULE: ./src/github.ts
 /**
  * GitHub API Client
  * Layer: infra
@@ -25946,10 +25957,180 @@ function parseRateLimitResponse(raw) {
     return null;
 }
 
+// EXTERNAL MODULE: ./src/reducer.ts
+var reducer = __nccwpck_require__(4807);
+// EXTERNAL MODULE: ./src/state.ts + 1 modules
+var src_state = __nccwpck_require__(4240);
+;// CONCATENATED MODULE: ./src/poller.ts
+/* module decorator */ module = __nccwpck_require__.hmd(module);
+/**
+ * Poller Process
+ * Layer: poller
+ *
+ * Provided ports:
+ *   - poller.spawn
+ *   - poller.kill
+ *
+ * Background process that polls /rate_limit and updates state.
+ * Runs as a detached child process.
+ *
+ * When run directly (as child process entry):
+ *   - Reads config from environment
+ *   - Polls at interval
+ *   - Updates state file atomically
+ *   - Handles SIGTERM for graceful shutdown
+ */
+
+
+
+
+
+
+/**
+ * Spawns the poller as a detached background process.
+ *
+ * @param token - GitHub token for API calls
+ * @returns PID of spawned process or error
+ */
+function spawnPoller(token) {
+    try {
+        // Resolve path to bundled poller entry
+        // ncc bundles to dist/poller/index.js
+        const pollerEntry = path.resolve(__dirname, 'poller', 'index.js');
+        const child = spawn(process.execPath, [pollerEntry], {
+            detached: true,
+            stdio: 'ignore',
+            env: {
+                ...process.env,
+                GITHUB_API_MONITOR_TOKEN: token,
+                GITHUB_API_MONITOR_INTERVAL: String(POLL_INTERVAL_SECONDS),
+            },
+        });
+        // Allow parent to exit without waiting
+        child.unref();
+        if (!child.pid) {
+            return { success: false, error: 'Failed to get child PID' };
+        }
+        return { success: true, pid: child.pid };
+    }
+    catch (err) {
+        const error = err;
+        return { success: false, error: `Failed to spawn poller: ${error.message}` };
+    }
+}
+/**
+ * Kills the poller process by PID.
+ * Sends SIGTERM for graceful shutdown.
+ *
+ * @param pid - Process ID to kill
+ */
+function killPoller(pid) {
+    try {
+        // Check if process exists
+        process.kill(pid, 0);
+        // Send SIGTERM
+        process.kill(pid, 'SIGTERM');
+        return { success: true };
+    }
+    catch (err) {
+        const error = err;
+        if (error.code === 'ESRCH') {
+            return {
+                success: false,
+                error: 'Process not found',
+                notFound: true,
+            };
+        }
+        return {
+            success: false,
+            error: `Failed to kill poller: ${error.message}`,
+            notFound: false,
+        };
+    }
+}
+// -----------------------------------------------------------------------------
+// Poller main loop (when run as child process)
+// -----------------------------------------------------------------------------
+/**
+ * Main polling loop.
+ * Runs indefinitely until SIGTERM received.
+ */
+async function runPollerLoop(token, intervalSeconds) {
+    let running = true;
+    // Handle graceful shutdown
+    process.on('SIGTERM', () => {
+        running = false;
+    });
+    // Initial state or read existing
+    const stateResult = (0,src_state/* readState */.un)();
+    let state;
+    if (stateResult.success) {
+        state = stateResult.state;
+    }
+    else {
+        state = (0,reducer/* createInitialState */.Ur)();
+    }
+    // Initial poll immediately
+    state = await performPoll(state, token);
+    // Polling loop
+    while (running) {
+        await sleep(intervalSeconds * 1000);
+        if (!running)
+            break;
+        state = await performPoll(state, token);
+    }
+    // Final state write on shutdown
+    (0,src_state/* writeState */.Jq)(state);
+}
+/**
+ * Performs a single poll and updates state.
+ */
+async function performPoll(state, token) {
+    const timestamp = new Date().toISOString();
+    const result = await fetchRateLimit(token);
+    if (!result.success) {
+        const newState = (0,reducer/* recordFailure */.C5)(state, result.error);
+        (0,src_state/* writeState */.Jq)(newState);
+        return newState;
+    }
+    const { state: newState } = (0,reducer/* reduce */.TS)(state, result.data, timestamp);
+    (0,src_state/* writeState */.Jq)(newState);
+    return newState;
+}
+/**
+ * Sleep helper.
+ */
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+// -----------------------------------------------------------------------------
+// Child process entry point
+// -----------------------------------------------------------------------------
+/**
+ * Entry point when run as child process.
+ */
+async function main() {
+    const token = process.env['GITHUB_API_MONITOR_TOKEN'];
+    const intervalStr = process.env['GITHUB_API_MONITOR_INTERVAL'];
+    if (!token) {
+        console.error('GITHUB_API_MONITOR_TOKEN not set');
+        process.exit(1);
+    }
+    const interval = intervalStr ? parseInt(intervalStr, 10) : types/* POLL_INTERVAL_SECONDS */.oG;
+    await runPollerLoop(token, interval);
+}
+// Run if this is the entry point
+if (__nccwpck_require__.c[__nccwpck_require__.s] === module) {
+    main().catch((err) => {
+        console.error('Poller error:', err);
+        process.exit(1);
+    });
+}
+
 
 /***/ }),
 
-/***/ 1309:
+/***/ 4216:
 /***/ ((__unused_webpack_module, __unused_webpack___webpack_exports__, __nccwpck_require__) => {
 
 
@@ -26028,26 +26209,189 @@ function assertSupported() {
     }
 }
 
-// EXTERNAL MODULE: ./src/poller.ts
-var poller = __nccwpck_require__(8105);
+// EXTERNAL MODULE: ./src/poller.ts + 1 modules
+var poller = __nccwpck_require__(6553);
 // EXTERNAL MODULE: ./src/state.ts + 1 modules
-var src_state = __nccwpck_require__(4240);
+var state = __nccwpck_require__(4240);
 // EXTERNAL MODULE: ./src/reducer.ts
 var reducer = __nccwpck_require__(4807);
-// EXTERNAL MODULE: ./src/github.ts
-var github = __nccwpck_require__(9248);
-;// CONCATENATED MODULE: ./src/main.ts
+// EXTERNAL MODULE: external "fs"
+var external_fs_ = __nccwpck_require__(9896);
+;// CONCATENATED MODULE: ./src/output.ts
 /**
- * Main Entry
+ * Output Renderer
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - output.render
+ *
+ * Generates summary for GitHub step summary and console.
+ */
+
+/**
+ * Renders the summary data to markdown and console formats.
+ *
+ * @param data - Summary data to render
+ */
+function render(data) {
+    const markdown = renderMarkdown(data);
+    const consoleText = renderConsole(data);
+    return { markdown, console: consoleText };
+}
+// -----------------------------------------------------------------------------
+// Markdown rendering
+// -----------------------------------------------------------------------------
+/**
+ * Renders full markdown summary for $GITHUB_STEP_SUMMARY.
+ */
+function renderMarkdown(data) {
+    const { state, duration_seconds, warnings } = data;
+    const lines = [];
+    // Header
+    lines.push('## GitHub API Usage (Monitor) — Job Summary');
+    lines.push('');
+    // Duration and poll info
+    const duration = formatDuration(duration_seconds);
+    lines.push(`**Duration:** ${duration} | **Polls:** ${state.poll_count} | **Failures:** ${state.poll_failures}`);
+    lines.push('');
+    // Bucket table
+    const buckets = getSortedBuckets(state);
+    if (buckets.length > 0) {
+        lines.push('| Bucket | Used (job) | Windows | Remaining | Resets at (UTC) |');
+        lines.push('|--------|----------:|--------:|----------:|-----------------|');
+        for (const [name, bucket] of buckets) {
+            const resetTime = formatResetTime(bucket.last_reset);
+            lines.push(`| ${name} | ${bucket.total_used} | ${bucket.windows_crossed} | ${bucket.remaining} | ${resetTime} |`);
+        }
+        lines.push('');
+    }
+    else {
+        lines.push('*No bucket data collected.*');
+        lines.push('');
+    }
+    // Warnings
+    if (warnings.length > 0) {
+        lines.push('### Warnings');
+        lines.push('');
+        for (const warning of warnings) {
+            lines.push(`- ${warning}`);
+        }
+        lines.push('');
+    }
+    return lines.join('\n');
+}
+// -----------------------------------------------------------------------------
+// Console rendering
+// -----------------------------------------------------------------------------
+/**
+ * Renders concise console output.
+ */
+function renderConsole(data) {
+    const { state, duration_seconds, warnings } = data;
+    const lines = [];
+    // One-line summary
+    const duration = formatDuration(duration_seconds);
+    const totalUsed = Object.values(state.buckets).reduce((sum, b) => sum + b.total_used, 0);
+    lines.push(`GitHub API Usage: ${totalUsed} requests in ${duration} (${state.poll_count} polls)`);
+    // Top 3 buckets
+    const buckets = getSortedBuckets(state).slice(0, 3);
+    if (buckets.length > 0) {
+        lines.push('Top buckets:');
+        for (const [name, bucket] of buckets) {
+            lines.push(`  - ${name}: ${bucket.total_used} used, ${bucket.remaining} remaining`);
+        }
+    }
+    // Warnings (abbreviated)
+    if (warnings.length > 0) {
+        lines.push(`Warnings: ${warnings.length}`);
+    }
+    return lines.join('\n');
+}
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+/**
+ * Returns buckets sorted by total_used descending.
+ */
+function getSortedBuckets(state) {
+    return Object.entries(state.buckets).sort((a, b) => b[1].total_used - a[1].total_used);
+}
+/**
+ * Formats duration in human-readable form.
+ */
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${seconds}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (minutes < 60) {
+        return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+/**
+ * Formats reset epoch as UTC timestamp.
+ */
+function formatResetTime(epoch) {
+    return new Date(epoch * 1000).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
+}
+// -----------------------------------------------------------------------------
+// GitHub Step Summary
+// -----------------------------------------------------------------------------
+/**
+ * Writes markdown to GitHub step summary.
+ */
+function writeStepSummary(markdown) {
+    const summaryPath = process.env['GITHUB_STEP_SUMMARY'];
+    if (summaryPath) {
+        external_fs_.appendFileSync(summaryPath, markdown + '\n');
+    }
+}
+// -----------------------------------------------------------------------------
+// Warning generation
+// -----------------------------------------------------------------------------
+/**
+ * Generates warnings based on state analysis.
+ */
+function generateWarnings(state) {
+    const warnings = [];
+    // Poll failures
+    if (state.poll_failures > 0) {
+        warnings.push(`${state.poll_failures} poll(s) failed during monitoring`);
+    }
+    // Anomalies
+    const totalAnomalies = Object.values(state.buckets).reduce((sum, b) => sum + b.anomalies, 0);
+    if (totalAnomalies > 0) {
+        warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset)`);
+    }
+    // Multiple window crosses
+    for (const [name, bucket] of Object.entries(state.buckets)) {
+        if (bucket.windows_crossed > 1) {
+            warnings.push(`${name} window crossed ${bucket.windows_crossed} times; totals are interval-bounded`);
+        }
+    }
+    // Last error
+    if (state.last_error) {
+        warnings.push(`Last error: ${state.last_error}`);
+    }
+    return warnings;
+}
+
+;// CONCATENATED MODULE: ./src/post.ts
+/**
+ * Post Entry
  * Layer: action
  *
- * GitHub Action main entry point. Spawns the background poller.
- * Cleanup and reporting is handled by post.ts (via action.yml post entry).
+ * GitHub Action post entry point for cleanup and reporting.
+ * Runs automatically after job completes (via action.yml post-if: always()).
  *
  * Required ports:
- *   - poller.spawn
- *   - state.write
- *   - github.fetchRateLimit
+ *   - poller.kill
+ *   - state.read
+ *   - output.render
  */
 
 
@@ -26056,17 +26400,11 @@ var github = __nccwpck_require__(9248);
 
 
 // -----------------------------------------------------------------------------
-// Action entry point
+// Post entry point
 // -----------------------------------------------------------------------------
 async function run() {
     try {
-        const token = core.getInput('token') || process.env['GITHUB_TOKEN'];
-        if (!token) {
-            throw new Error('No token provided. Set the token input or GITHUB_TOKEN environment variable.');
-        }
-        // Mask token to prevent accidental exposure
-        core.setSecret(token);
-        await handleStart(token);
+        await handlePost();
     }
     catch (error) {
         const err = error;
@@ -26074,233 +26412,70 @@ async function run() {
     }
 }
 // -----------------------------------------------------------------------------
-// Start handler
+// Post handler (cleanup and report)
 // -----------------------------------------------------------------------------
-async function handleStart(token) {
-    core.info('Starting GitHub API usage monitor...');
-    // Validate platform
-    assertSupported();
-    // Initial poll to validate token and establish baseline (fail-fast)
-    core.info('Validating token with initial API call...');
-    const initialPoll = await (0,github/* fetchRateLimit */.AD)(token);
-    if (!initialPoll.success) {
-        throw new Error(`Token validation failed: ${initialPoll.error}`);
+async function handlePost() {
+    core.info('Stopping GitHub API usage monitor...');
+    const warnings = [];
+    // Check platform (warn but continue)
+    const platformInfo = isSupported();
+    if (!platformInfo.supported) {
+        warnings.push(`Unsupported platform: ${platformInfo.reason}`);
     }
-    // Create initial state with baseline from first poll
-    let state = (0,reducer/* createInitialState */.Ur)();
-    const reduceResult = (0,reducer/* reduce */.TS)(state, initialPoll.data, initialPoll.timestamp);
-    state = reduceResult.state;
-    const writeResult = (0,src_state/* writeState */.Jq)(state);
-    if (!writeResult.success) {
-        throw new Error(`Failed to write initial state: ${writeResult.error}`);
-    }
-    // Spawn poller
-    const spawnResult = (0,poller/* spawnPoller */.s)(token);
-    if (!spawnResult.success) {
-        throw new Error(`Failed to spawn poller: ${spawnResult.error}`);
-    }
-    // Save PID - if this fails, kill the orphan process
-    const pidResult = (0,src_state/* writePid */.h_)(spawnResult.pid);
-    if (!pidResult.success) {
-        // Cleanup orphan process before failing
-        try {
-            (0,poller/* killPoller */.F)(spawnResult.pid);
+    // Read PID and kill poller
+    const pid = (0,state/* readPid */.Qs)();
+    if (pid) {
+        const killResult = (0,poller/* killPoller */.F)(pid);
+        if (!killResult.success) {
+            if (killResult.notFound) {
+                warnings.push('Poller process not found (may have exited)');
+            }
+            else {
+                warnings.push(`Failed to kill poller: ${killResult.error}`);
+            }
         }
-        catch {
-            // Best effort cleanup
-        }
-        throw new Error(`Failed to write PID: ${pidResult.error}`);
+        (0,state/* removePid */.yz)();
     }
-    const bucketCount = Object.keys(state.buckets).length;
-    core.info(`Monitor started (PID: ${spawnResult.pid}, tracking ${bucketCount} buckets)`);
+    else {
+        warnings.push('No PID file found (monitor may not have started)');
+    }
+    // Read final state
+    const stateResult = (0,state/* readState */.un)();
+    if (!stateResult.success) {
+        if (stateResult.notFound) {
+            core.warning('No state file found. Monitor may not have started or state was lost.');
+            return;
+        }
+        throw new Error(`Failed to read state: ${stateResult.error}`);
+    }
+    // Mark as stopped
+    const finalState = (0,reducer/* markStopped */.fP)(stateResult.state);
+    (0,state/* writeState */.Jq)(finalState);
+    // Calculate duration
+    const startTime = new Date(finalState.started_at_ts).getTime();
+    const endTime = finalState.stopped_at_ts
+        ? new Date(finalState.stopped_at_ts).getTime()
+        : Date.now();
+    const durationSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
+    // Generate state-based warnings
+    const stateWarnings = generateWarnings(finalState);
+    warnings.push(...stateWarnings);
+    // Render output
+    const summaryData = {
+        state: finalState,
+        duration_seconds: durationSeconds,
+        warnings,
+    };
+    const { markdown, console: consoleText } = render(summaryData);
+    // Output
+    core.info(consoleText);
+    writeStepSummary(markdown);
+    core.info('Monitor stopped');
 }
 // -----------------------------------------------------------------------------
 // Run
 // -----------------------------------------------------------------------------
 void run();
-
-
-/***/ }),
-
-/***/ 8105:
-/***/ ((module, __webpack_exports__, __nccwpck_require__) => {
-
-/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
-/* harmony export */   F: () => (/* binding */ killPoller),
-/* harmony export */   s: () => (/* binding */ spawnPoller)
-/* harmony export */ });
-/* harmony import */ var child_process__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(5317);
-/* harmony import */ var child_process__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(child_process__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6928);
-/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(path__WEBPACK_IMPORTED_MODULE_1__);
-/* harmony import */ var _types__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(8522);
-/* harmony import */ var _github__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(9248);
-/* harmony import */ var _reducer__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(4807);
-/* harmony import */ var _state__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(4240);
-/* module decorator */ module = __nccwpck_require__.hmd(module);
-/**
- * Poller Process
- * Layer: poller
- *
- * Provided ports:
- *   - poller.spawn
- *   - poller.kill
- *
- * Background process that polls /rate_limit and updates state.
- * Runs as a detached child process.
- *
- * When run directly (as child process entry):
- *   - Reads config from environment
- *   - Polls at interval
- *   - Updates state file atomically
- *   - Handles SIGTERM for graceful shutdown
- */
-
-
-
-
-
-
-/**
- * Spawns the poller as a detached background process.
- *
- * @param token - GitHub token for API calls
- * @returns PID of spawned process or error
- */
-function spawnPoller(token) {
-    try {
-        // Resolve path to bundled poller entry
-        // ncc bundles to dist/poller/index.js
-        const pollerEntry = path__WEBPACK_IMPORTED_MODULE_1__.resolve(__dirname, 'poller', 'index.js');
-        const child = (0,child_process__WEBPACK_IMPORTED_MODULE_0__.spawn)(process.execPath, [pollerEntry], {
-            detached: true,
-            stdio: 'ignore',
-            env: {
-                ...process.env,
-                GITHUB_API_MONITOR_TOKEN: token,
-                GITHUB_API_MONITOR_INTERVAL: String(_types__WEBPACK_IMPORTED_MODULE_3__/* .POLL_INTERVAL_SECONDS */ .oG),
-            },
-        });
-        // Allow parent to exit without waiting
-        child.unref();
-        if (!child.pid) {
-            return { success: false, error: 'Failed to get child PID' };
-        }
-        return { success: true, pid: child.pid };
-    }
-    catch (err) {
-        const error = err;
-        return { success: false, error: `Failed to spawn poller: ${error.message}` };
-    }
-}
-/**
- * Kills the poller process by PID.
- * Sends SIGTERM for graceful shutdown.
- *
- * @param pid - Process ID to kill
- */
-function killPoller(pid) {
-    try {
-        // Check if process exists
-        process.kill(pid, 0);
-        // Send SIGTERM
-        process.kill(pid, 'SIGTERM');
-        return { success: true };
-    }
-    catch (err) {
-        const error = err;
-        if (error.code === 'ESRCH') {
-            return {
-                success: false,
-                error: 'Process not found',
-                notFound: true,
-            };
-        }
-        return {
-            success: false,
-            error: `Failed to kill poller: ${error.message}`,
-            notFound: false,
-        };
-    }
-}
-// -----------------------------------------------------------------------------
-// Poller main loop (when run as child process)
-// -----------------------------------------------------------------------------
-/**
- * Main polling loop.
- * Runs indefinitely until SIGTERM received.
- */
-async function runPollerLoop(token, intervalSeconds) {
-    let running = true;
-    // Handle graceful shutdown
-    process.on('SIGTERM', () => {
-        running = false;
-    });
-    // Initial state or read existing
-    const stateResult = (0,_state__WEBPACK_IMPORTED_MODULE_2__/* .readState */ .un)();
-    let state;
-    if (stateResult.success) {
-        state = stateResult.state;
-    }
-    else {
-        state = (0,_reducer__WEBPACK_IMPORTED_MODULE_4__/* .createInitialState */ .Ur)();
-    }
-    // Initial poll immediately
-    state = await performPoll(state, token);
-    // Polling loop
-    while (running) {
-        await sleep(intervalSeconds * 1000);
-        if (!running)
-            break;
-        state = await performPoll(state, token);
-    }
-    // Final state write on shutdown
-    (0,_state__WEBPACK_IMPORTED_MODULE_2__/* .writeState */ .Jq)(state);
-}
-/**
- * Performs a single poll and updates state.
- */
-async function performPoll(state, token) {
-    const timestamp = new Date().toISOString();
-    const result = await (0,_github__WEBPACK_IMPORTED_MODULE_5__/* .fetchRateLimit */ .AD)(token);
-    if (!result.success) {
-        const newState = (0,_reducer__WEBPACK_IMPORTED_MODULE_4__/* .recordFailure */ .C5)(state, result.error);
-        (0,_state__WEBPACK_IMPORTED_MODULE_2__/* .writeState */ .Jq)(newState);
-        return newState;
-    }
-    const { state: newState } = (0,_reducer__WEBPACK_IMPORTED_MODULE_4__/* .reduce */ .TS)(state, result.data, timestamp);
-    (0,_state__WEBPACK_IMPORTED_MODULE_2__/* .writeState */ .Jq)(newState);
-    return newState;
-}
-/**
- * Sleep helper.
- */
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-// -----------------------------------------------------------------------------
-// Child process entry point
-// -----------------------------------------------------------------------------
-/**
- * Entry point when run as child process.
- */
-async function main() {
-    const token = process.env['GITHUB_API_MONITOR_TOKEN'];
-    const intervalStr = process.env['GITHUB_API_MONITOR_INTERVAL'];
-    if (!token) {
-        console.error('GITHUB_API_MONITOR_TOKEN not set');
-        process.exit(1);
-    }
-    const interval = intervalStr ? parseInt(intervalStr, 10) : _types__WEBPACK_IMPORTED_MODULE_3__/* .POLL_INTERVAL_SECONDS */ .oG;
-    await runPollerLoop(token, interval);
-}
-// Run if this is the entry point
-if (__nccwpck_require__.c[__nccwpck_require__.s] === module) {
-    main().catch((err) => {
-        console.error('Poller error:', err);
-        process.exit(1);
-    });
-}
 
 
 /***/ }),
@@ -26311,9 +26486,10 @@ if (__nccwpck_require__.c[__nccwpck_require__.s] === module) {
 /* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
 /* harmony export */   C5: () => (/* binding */ recordFailure),
 /* harmony export */   TS: () => (/* binding */ reduce),
-/* harmony export */   Ur: () => (/* binding */ createInitialState)
+/* harmony export */   Ur: () => (/* binding */ createInitialState),
+/* harmony export */   fP: () => (/* binding */ markStopped)
 /* harmony export */ });
-/* unused harmony exports initBucket, updateBucket, markStopped */
+/* unused harmony exports initBucket, updateBucket */
 /* harmony import */ var _types__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(8522);
 /**
  * Reducer
@@ -26507,12 +26683,13 @@ function markStopped(state) {
 
 // EXPORTS
 __nccwpck_require__.d(__webpack_exports__, {
+  Qs: () => (/* binding */ readPid),
   un: () => (/* binding */ readState),
-  h_: () => (/* binding */ writePid),
+  yz: () => (/* binding */ removePid),
   Jq: () => (/* binding */ writeState)
 });
 
-// UNUSED EXPORTS: isValidState, readPid, removePid
+// UNUSED EXPORTS: isValidState, writePid
 
 // EXTERNAL MODULE: external "fs"
 var external_fs_ = __nccwpck_require__(9896);
@@ -26542,7 +26719,7 @@ var types = __nccwpck_require__(8522);
  *
  * @throws Error if RUNNER_TEMP is not set
  */
-function getStateDir() {
+function paths_getStateDir() {
     const runnerTemp = process.env['RUNNER_TEMP'];
     if (!runnerTemp) {
         throw new Error('RUNNER_TEMP environment variable is not set');
@@ -26553,7 +26730,7 @@ function getStateDir() {
  * Returns the absolute path to state.json
  */
 function getStatePath() {
-    return external_path_.join(getStateDir(), types/* STATE_FILE_NAME */.fZ);
+    return external_path_.join(paths_getStateDir(), types/* STATE_FILE_NAME */.fZ);
 }
 // -----------------------------------------------------------------------------
 // Port: paths.pidPath
@@ -26562,7 +26739,7 @@ function getStatePath() {
  * Returns the absolute path to poller.pid
  */
 function paths_getPidPath() {
-    return external_path_.join(getStateDir(), types/* PID_FILE_NAME */.Jm);
+    return external_path_.join(paths_getStateDir(), types/* PID_FILE_NAME */.Jm);
 }
 // -----------------------------------------------------------------------------
 // Helpers
@@ -26571,7 +26748,7 @@ function paths_getPidPath() {
  * Returns the path for atomic write temporary file
  */
 function getStateTmpPath() {
-    return external_path_.join(getStateDir(), `${types/* STATE_FILE_NAME */.fZ}.tmp`);
+    return external_path_.join(paths_getStateDir(), `${types/* STATE_FILE_NAME */.fZ}.tmp`);
 }
 
 ;// CONCATENATED MODULE: ./src/state.ts
@@ -26632,7 +26809,7 @@ function readState() {
  * @param state - State to persist
  */
 function writeState(state) {
-    const stateDir = getStateDir();
+    const stateDir = paths_getStateDir();
     const statePath = getStatePath();
     const tmpPath = getStateTmpPath();
     try {
@@ -26694,11 +26871,11 @@ function isValidState(value) {
  * Writes the poller PID to disk.
  */
 function writePid(pid) {
-    const pidPath = paths_getPidPath();
+    const pidPath = getPidPath();
     const stateDir = getStateDir();
     try {
-        external_fs_.mkdirSync(stateDir, { recursive: true });
-        external_fs_.writeFileSync(pidPath, String(pid), 'utf-8');
+        fs.mkdirSync(stateDir, { recursive: true });
+        fs.writeFileSync(pidPath, String(pid), 'utf-8');
         return { success: true };
     }
     catch (err) {
@@ -26713,9 +26890,9 @@ function writePid(pid) {
  * Reads the poller PID from disk.
  */
 function readPid() {
-    const pidPath = getPidPath();
+    const pidPath = paths_getPidPath();
     try {
-        const content = fs.readFileSync(pidPath, 'utf-8');
+        const content = external_fs_.readFileSync(pidPath, 'utf-8');
         const pid = parseInt(content.trim(), 10);
         return isNaN(pid) ? null : pid;
     }
@@ -26727,9 +26904,9 @@ function readPid() {
  * Removes the PID file.
  */
 function removePid() {
-    const pidPath = getPidPath();
+    const pidPath = paths_getPidPath();
     try {
-        fs.unlinkSync(pidPath);
+        external_fs_.unlinkSync(pidPath);
     }
     catch {
         // Ignore errors - file may not exist
@@ -28635,18 +28812,6 @@ module.exports = parseParams
 /******/ __nccwpck_require__.c = __webpack_module_cache__;
 /******/ 
 /************************************************************************/
-/******/ /* webpack/runtime/compat get default export */
-/******/ (() => {
-/******/ 	// getDefaultExport function for compatibility with non-harmony modules
-/******/ 	__nccwpck_require__.n = (module) => {
-/******/ 		var getter = module && module.__esModule ?
-/******/ 			() => (module['default']) :
-/******/ 			() => (module);
-/******/ 		__nccwpck_require__.d(getter, { a: getter });
-/******/ 		return getter;
-/******/ 	};
-/******/ })();
-/******/ 
 /******/ /* webpack/runtime/define property getters */
 /******/ (() => {
 /******/ 	// define getter functions for harmony exports
@@ -28688,7 +28853,7 @@ module.exports = parseParams
 /******/ // module cache are used so entry inlining is disabled
 /******/ // startup
 /******/ // Load entry module and return exports
-/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 1309);
+/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 4216);
 /******/ 
 
 //# sourceMappingURL=index.js.map

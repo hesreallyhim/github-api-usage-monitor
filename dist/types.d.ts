@@ -75,7 +75,6 @@ export interface PlatformInfo {
     supported: boolean;
     reason?: string;
 }
-export type ActionMode = 'start' | 'stop';
 export declare const POLL_INTERVAL_SECONDS = 30;
 export declare const STATE_DIR_NAME = "github-api-usage-monitor";
 export declare const STATE_FILE_NAME = "state.json";
