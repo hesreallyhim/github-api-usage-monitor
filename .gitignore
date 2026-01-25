@@ -14,7 +14,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -100,7 +99,6 @@ pids/
 .env.production.local
 
 # Build outputs
-dist/
 build/
 out/
 .next/

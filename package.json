@@ -5,7 +5,7 @@
   "description": "Monitor GitHub API rate-limit usage during a job by polling /rate_limit",
   "main": "dist/main.js",
   "scripts": {
-    "build": "ncc build src/main.ts -o dist --source-map --license licenses.txt",
+    "build": "ncc build src/main.ts -o dist --source-map --license licenses.txt && mv dist/index.js dist/main.js && mv dist/index.js.map dist/main.js.map",
     "build:poller": "ncc build src/poller.ts -o dist/poller --source-map",
     "build:all": "npm run build && npm run build:poller",
     "test": "vitest run",
