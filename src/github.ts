@@ -9,6 +9,7 @@
  */
 
 import type { RateLimitResponse, RateLimitSample } from './types';
+import { FETCH_TIMEOUT_MS } from './types';
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -44,8 +45,13 @@ export type FetchRateLimitOutcome = FetchRateLimitResult | FetchRateLimitError;
 export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutcome> {
   const timestamp = new Date().toISOString();
 
+  // Set up abort controller with timeout to prevent indefinite hangs
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
   try {
     const response = await fetch(RATE_LIMIT_URL, {
+      signal: controller.signal,
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -54,6 +60,8 @@ export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutco
         'X-GitHub-Api-Version': '2022-11-28',
       },
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const statusText = response.statusText || 'Unknown error';
@@ -81,7 +89,19 @@ export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutco
       timestamp,
     };
   } catch (err) {
+    clearTimeout(timeoutId);
+
     const error = err as Error;
+
+    // Handle abort error specifically (timeout)
+    if (error.name === 'AbortError') {
+      return {
+        success: false,
+        error: `Request timeout: GitHub API did not respond within ${FETCH_TIMEOUT_MS}ms`,
+        timestamp,
+      };
+    }
+
     return {
       success: false,
       error: `Network error: ${error.message}`,
