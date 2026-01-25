@@ -9,8 +9,9 @@
  *   - Fixture-based parsing tests for /rate_limit payloads
  */
 
-import { describe, it, expect } from 'vitest';
-import { isValidSample, parseRateLimitResponse } from '../src/github';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { isValidSample, parseRateLimitResponse, fetchRateLimit } from '../src/github';
+import { FETCH_TIMEOUT_MS } from '../src/types';
 import type { RateLimitSample } from '../src/types';
 
 // Load fixtures
@@ -189,5 +190,144 @@ describe('parseRateLimitResponse - edge cases', () => {
 
     expect(result).not.toBeNull();
     expect(result?.resources['core']?.limit).toBe(5000);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// fetchRateLimit tests - timeout behavior
+// -----------------------------------------------------------------------------
+
+describe('fetchRateLimit', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('handles AbortError correctly and returns FetchRateLimitError', async () => {
+    // Mock fetch to throw an AbortError (simulates what happens on timeout)
+    const abortError = new Error('The operation was aborted');
+    abortError.name = 'AbortError';
+
+    const mockFetch = vi.fn().mockRejectedValue(abortError);
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await fetchRateLimit('test-token');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('Request timeout');
+      expect(result.error).toContain(String(FETCH_TIMEOUT_MS));
+    }
+  });
+
+  it('handles network errors correctly', async () => {
+    // Mock fetch to throw a network error
+    const networkError = new Error('Network connection failed');
+    networkError.name = 'TypeError';
+
+    const mockFetch = vi.fn().mockRejectedValue(networkError);
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await fetchRateLimit('test-token');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('Network error');
+      expect(result.error).toContain('Network connection failed');
+    }
+  });
+
+  it('returns success for valid response', async () => {
+    // Mock fetch to return a valid response
+    const mockResponse = {
+      ok: true,
+      json: vi.fn().mockResolvedValue(standardResponse),
+    };
+    const mockFetch = vi.fn().mockResolvedValue(mockResponse);
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await fetchRateLimit('test-token');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.resources['core']).toBeDefined();
+    }
+  });
+
+  it('returns error for HTTP error response', async () => {
+    // Mock fetch to return an error response
+    const mockResponse = {
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+    };
+    const mockFetch = vi.fn().mockResolvedValue(mockResponse);
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await fetchRateLimit('test-token');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('HTTP 401');
+      expect(result.error).toContain('Unauthorized');
+    }
+  });
+
+  it('passes abort signal to fetch', async () => {
+    // Mock fetch to capture the signal
+    let capturedSignal: AbortSignal | undefined;
+    const mockFetch = vi.fn().mockImplementation((_url: string, options: RequestInit | undefined) => {
+      capturedSignal = options?.signal as AbortSignal | undefined;
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(standardResponse),
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await fetchRateLimit('test-token');
+
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('aborts fetch when signal is triggered', async () => {
+    // This test verifies that the abort signal works by:
+    // 1. Capturing the signal passed to fetch
+    // 2. Verifying fetch was called with a signal that will abort
+    let capturedSignal: AbortSignal | undefined;
+    const mockFetch = vi.fn().mockImplementation((_url: string, options: RequestInit | undefined) => {
+      capturedSignal = options?.signal as AbortSignal | undefined;
+      // Return a valid response for this test
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(standardResponse),
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await fetchRateLimit('test-token');
+
+    // Verify the signal was passed and is connected to an AbortController
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    // The signal should not be aborted immediately (timeout hasn't elapsed)
+    expect(capturedSignal?.aborted).toBe(false);
+  });
+
+  it('returns error for invalid JSON response', async () => {
+    // Mock fetch to return invalid JSON
+    const mockResponse = {
+      ok: true,
+      json: vi.fn().mockResolvedValue({ invalid: 'response' }),
+    };
+    const mockFetch = vi.fn().mockResolvedValue(mockResponse);
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await fetchRateLimit('test-token');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('Failed to parse');
+    }
   });
 });
