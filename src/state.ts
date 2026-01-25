@@ -90,6 +90,7 @@ export type WriteStateOutcome = WriteStateResult | WriteStateError;
 /**
  * Writes reducer state to disk atomically.
  * Creates state directory if it doesn't exist.
+ * Cleans up temp file on failure to prevent orphaned files.
  *
  * @param state - State to persist
  */
@@ -111,6 +112,12 @@ export function writeState(state: ReducerState): WriteStateOutcome {
 
     return { success: true };
   } catch (err) {
+    // Clean up temp file on failure to prevent orphaned files
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {
+      // Ignore cleanup errors - file may not exist
+    }
     const error = err as Error;
     return {
       success: false,
