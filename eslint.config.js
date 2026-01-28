@@ -13,7 +13,12 @@ export default defineConfig(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['test/*.ts', 'test/integration/*.ts'],
+          allowDefaultProject: [
+            'test/*.ts',
+            'test/integration/*.ts',
+            'vitest.config.ts',
+            'vitest.integration.config.ts',
+          ],
           defaultProject: 'tsconfig.test.json',
         },
         tsconfigRootDir: import.meta.dirname,
