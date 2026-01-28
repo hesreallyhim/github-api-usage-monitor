@@ -28092,7 +28092,9 @@ function spawnPoller(token) {
     try {
         // Resolve path to bundled poller entry
         // ncc bundles to dist/poller/index.js
-        const pollerEntry = path.resolve(__dirname, 'poller', 'index.js');
+        const actionPath = process.env['GITHUB_ACTION_PATH'];
+        const baseDir = actionPath ? path.resolve(actionPath, 'dist') : path.dirname(process.argv[1] ?? '');
+        const pollerEntry = path.resolve(baseDir, 'poller', 'index.js');
         const child = spawn(process.execPath, [pollerEntry], {
             detached: true,
             stdio: 'ignore',
