@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-ubuntu:
+  build-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,15 @@ jobs:
         run: |
           npm ci
           npm run build:all
+
+      - name: Verify dist is up to date
+        run: git diff --exit-code -- dist
+
+  test-ubuntu:
+    runs-on: ubuntu-latest
+    needs: build-check
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Start API usage monitor
         uses: ./
@@ -46,19 +55,9 @@ jobs:
 
   test-macos:
     runs-on: macos-latest
+    needs: build-check
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install and build
-        run: |
-          npm ci
-          npm run build:all
 
       - name: Start API usage monitor
         uses: ./
@@ -82,19 +81,9 @@ jobs:
 
   test-windows-unsupported:
     runs-on: windows-latest
+    needs: build-check
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install and build
-        run: |
-          npm ci
-          npm run build:all
 
       - name: Start API usage monitor (should fail)
         id: start

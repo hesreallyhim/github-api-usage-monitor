@@ -9,6 +9,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
 
     steps:
       - uses: actions/checkout@v4
@@ -16,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
       - name: Install dependencies
@@ -34,7 +38,5 @@ jobs:
       - name: Build
         run: npm run build:all
 
-      - name: Verify dist exists
-        run: |
-          test -f dist/main.js || (echo "dist/main.js not found" && exit 1)
-          test -f dist/poller/index.js || (echo "dist/poller/index.js not found" && exit 1)
+      - name: Verify dist is up to date
+        run: git diff --exit-code -- dist
