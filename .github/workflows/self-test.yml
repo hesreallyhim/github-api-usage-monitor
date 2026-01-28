@@ -10,13 +10,17 @@ on:
 jobs:
   build-check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
       - name: Install and build
@@ -43,7 +47,7 @@ jobs:
           # Make some API calls to generate usage
           for i in {1..5}; do
             curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              https://api.github.com/rate_limit > /dev/null
+              https://api.github.com/repos/${{ github.repository }} > /dev/null
             sleep 2
           done
 
@@ -69,7 +73,7 @@ jobs:
           # Make some API calls to generate usage
           for i in {1..5}; do
             curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              https://api.github.com/rate_limit > /dev/null
+              https://api.github.com/repos/${{ github.repository }} > /dev/null
             sleep 2
           done
 
