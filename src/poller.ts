@@ -52,7 +52,8 @@ export function spawnPoller(token: string): SpawnOutcome {
     // ncc bundles to dist/poller/index.js
     const actionPath = process.env['GITHUB_ACTION_PATH'];
     const baseDir = actionPath ? path.resolve(actionPath, 'dist') : path.dirname(process.argv[1] ?? '');
-    const pollerEntry = path.resolve(baseDir, 'poller', 'index.js');
+    const separator = baseDir.endsWith(path.sep) ? '' : path.sep;
+    const pollerEntry = `${baseDir}${separator}poller${path.sep}index.js`;
 
     const child: ChildProcess = spawn(
       process.execPath,

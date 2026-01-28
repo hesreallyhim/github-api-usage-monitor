@@ -1,4 +1,4 @@
-import './sourcemap-register.cjs';import { createRequire as __WEBPACK_EXTERNAL_createRequire } from "module";
+import { createRequire as __WEBPACK_EXTERNAL_createRequire } from "module";
 /******/ var __webpack_modules__ = ({
 
 /***/ 4914:
@@ -28094,7 +28094,8 @@ function spawnPoller(token) {
         // ncc bundles to dist/poller/index.js
         const actionPath = process.env['GITHUB_ACTION_PATH'];
         const baseDir = actionPath ? external_path_.resolve(actionPath, 'dist') : external_path_.dirname(process.argv[1] ?? '');
-        const pollerEntry = external_path_.resolve(baseDir, 'poller', 'index.js');
+        const separator = baseDir.endsWith(external_path_.sep) ? '' : external_path_.sep;
+        const pollerEntry = `${baseDir}${separator}poller${external_path_.sep}index.js`;
         const child = (0,external_child_process_.spawn)(process.execPath, [pollerEntry], {
             detached: true,
             stdio: 'ignore',
@@ -28700,5 +28701,3 @@ async function handleStart(token) {
 // -----------------------------------------------------------------------------
 void run();
 
-
-//# sourceMappingURL=index.js.map
