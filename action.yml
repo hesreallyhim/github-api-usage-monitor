@@ -1,6 +1,6 @@
 name: github-api-usage-monitor
 description: Monitor GitHub API rate-limit usage during a job by polling /rate_limit.
-author: ''
+author: 'Really Him'
 
 branding:
   icon: activity
