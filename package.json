@@ -1,6 +1,6 @@
 {
   "name": "github-api-usage-monitor",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Monitor GitHub API rate-limit usage during a job by polling /rate_limit",
   "main": "dist/main.js",
@@ -26,7 +26,7 @@
     "api-usage",
     "monitoring"
   ],
-  "author": "",
+  "author": "Really Him",
   "license": "MIT",
   "devDependencies": {
     "@actions/core": "^2.0.2",
