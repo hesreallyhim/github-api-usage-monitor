@@ -12,14 +12,18 @@
  * Algorithm (per poll, per bucket):
  *   if bucket not initialized:
  *     initialize with current reset/used
- *   else if reset == last_reset (same window):
- *     delta = used - last_used
- *     if delta < 0: anomaly (do not subtract)
- *     else: total_used += delta
- *   else (new window):
+ *   else if reset changed AND used < last_used (genuine window reset):
  *     windows_crossed += 1
  *     total_used += used (include post-reset usage)
  *     last_reset = reset
+ *   else if reset changed AND used >= last_used (timestamp rotation, not a real reset):
+ *     delta = used - last_used
+ *     total_used += delta
+ *     last_reset = reset
+ *   else (same window):
+ *     delta = used - last_used
+ *     if delta < 0: anomaly (do not subtract)
+ *     else: total_used += delta
  *   last_used = used
  */
 import type { ReducerState, BucketState, RateLimitSample, RateLimitResponse } from './types';

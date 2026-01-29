@@ -7,6 +7,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Run jobs sequentially to avoid cross-job token contamination
 jobs:
   build-check:
     runs-on: ubuntu-latest
@@ -31,26 +32,230 @@ jobs:
       - name: Verify dist is up to date
         run: git diff --exit-code -- dist
 
-  test-ubuntu:
+  # ---------------------------------------------------------------------------
+  # Job 1: Baseline — no explicit API calls, measures infrastructure noise
+  # ---------------------------------------------------------------------------
+  baseline:
     runs-on: ubuntu-latest
     needs: build-check
     steps:
       - uses: actions/checkout@v4
 
       - name: GitHub API usage monitor
-        uses: hesreallyhim/github-api-usage-monitor@main
+        uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Simulate API usage
+      - name: Wait for polls (90s)
+        run: sleep 90
+
+      - name: Dump state.json before post hook
         run: |
-          # Make some API calls to generate usage
+          STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
+          echo "=== Baseline: state.json ==="
+          if [ -f "$STATE_FILE" ]; then
+            cat "$STATE_FILE" | python3 -m json.tool
+          else
+            echo "state.json not found at $STATE_FILE"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Core bucket — 5 explicit GET /repos calls
+  # ---------------------------------------------------------------------------
+  test-core-5:
+    runs-on: ubuntu-latest
+    needs: baseline
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: GitHub API usage monitor
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Make 5 core API calls
+        run: |
           for i in {1..5}; do
             curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              https://api.github.com/repos/${{ github.repository }} > /dev/null
+              "https://api.github.com/repos/${{ github.repository }}" > /dev/null
             sleep 2
           done
 
+      - name: Wait for polls (90s total from start)
+        run: sleep 70
+
+      - name: Dump state.json
+        run: |
+          STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
+          echo "=== test-core-5: state.json ==="
+          if [ -f "$STATE_FILE" ]; then
+            cat "$STATE_FILE" | python3 -m json.tool
+          else
+            echo "state.json not found"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Core bucket — 10 explicit GET /repos calls
+  # ---------------------------------------------------------------------------
+  test-core-10:
+    runs-on: ubuntu-latest
+    needs: test-core-5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: GitHub API usage monitor
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Make 10 core API calls
+        run: |
+          for i in {1..10}; do
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}" > /dev/null
+            sleep 1
+          done
+
+      - name: Wait for polls (90s total from start)
+        run: sleep 70
+
+      - name: Dump state.json
+        run: |
+          STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
+          echo "=== test-core-10: state.json ==="
+          if [ -f "$STATE_FILE" ]; then
+            cat "$STATE_FILE" | python3 -m json.tool
+          else
+            echo "state.json not found"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Search bucket — 3 search API calls (60s window)
+  # ---------------------------------------------------------------------------
+  test-search:
+    runs-on: ubuntu-latest
+    needs: test-core-10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: GitHub API usage monitor
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Make 3 search API calls
+        run: |
+          for i in {1..3}; do
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/search/repositories?q=test" > /dev/null
+            sleep 5
+          done
+
+      - name: Wait for polls (90s total from start)
+        run: sleep 70
+
+      - name: Dump state.json
+        run: |
+          STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
+          echo "=== test-search: state.json ==="
+          if [ -f "$STATE_FILE" ]; then
+            cat "$STATE_FILE" | python3 -m json.tool
+          else
+            echo "state.json not found"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 5: GraphQL bucket — 2 graphql calls
+  # ---------------------------------------------------------------------------
+  test-graphql:
+    runs-on: ubuntu-latest
+    needs: test-search
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: GitHub API usage monitor
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Make 2 GraphQL API calls
+        run: |
+          for i in {1..2}; do
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"query":"{ viewer { login } }"}' \
+              "https://api.github.com/graphql" > /dev/null
+            sleep 5
+          done
+
+      - name: Wait for polls (90s total from start)
+        run: sleep 70
+
+      - name: Dump state.json
+        run: |
+          STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
+          echo "=== test-graphql: state.json ==="
+          if [ -f "$STATE_FILE" ]; then
+            cat "$STATE_FILE" | python3 -m json.tool
+          else
+            echo "state.json not found"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 6: Mixed — 5 core + 3 search + 2 graphql
+  # ---------------------------------------------------------------------------
+  test-mixed:
+    runs-on: ubuntu-latest
+    needs: test-graphql
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: GitHub API usage monitor
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Make mixed API calls (5 core + 3 search + 2 graphql)
+        run: |
+          # Core calls
+          for i in {1..5}; do
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}" > /dev/null
+            sleep 1
+          done
+
+          # Search calls
+          for i in {1..3}; do
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/search/repositories?q=test" > /dev/null
+            sleep 2
+          done
+
+          # GraphQL calls
+          for i in {1..2}; do
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"query":"{ viewer { login } }"}' \
+              "https://api.github.com/graphql" > /dev/null
+            sleep 2
+          done
+
+      - name: Wait for polls (120s total from start)
+        run: sleep 95
+
+      - name: Dump state.json
+        run: |
+          STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
+          echo "=== test-mixed: state.json ==="
+          if [ -f "$STATE_FILE" ]; then
+            cat "$STATE_FILE" | python3 -m json.tool
+          else
+            echo "state.json not found"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Platform tests (run in parallel after mixed)
+  # ---------------------------------------------------------------------------
   test-macos:
     runs-on: macos-latest
     needs: build-check
@@ -58,18 +263,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: GitHub API usage monitor
-        uses: hesreallyhim/github-api-usage-monitor@main
+        uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Simulate API usage
         run: |
-          # Make some API calls to generate usage
           for i in {1..5}; do
             curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              https://api.github.com/repos/${{ github.repository }} > /dev/null
+              "https://api.github.com/repos/${{ github.repository }}" > /dev/null
             sleep 2
           done
+
+      - name: Dump state.json
+        run: |
+          STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
+          echo "=== test-macos: state.json ==="
+          if [ -f "$STATE_FILE" ]; then
+            cat "$STATE_FILE" | python3 -m json.tool
+          else
+            echo "state.json not found"
+          fi
 
   test-windows-unsupported:
     runs-on: windows-latest
@@ -80,7 +294,7 @@ jobs:
       - name: GitHub API usage monitor (should fail)
         id: start
         continue-on-error: true
-        uses: hesreallyhim/github-api-usage-monitor@main
+        uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 

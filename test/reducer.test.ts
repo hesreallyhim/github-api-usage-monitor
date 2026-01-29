@@ -355,6 +355,149 @@ describe('markStopped', () => {
 });
 
 // -----------------------------------------------------------------------------
+// updateBucket tests - idle window expiry (reset changes, no real usage)
+// -----------------------------------------------------------------------------
+
+describe('updateBucket - idle window expiry', () => {
+  it('scenario 1: window expires with 0 usage both sides → no crossing, no usage', () => {
+    const bucket = makeBucket({
+      last_reset: 1000,
+      last_used: 0,
+      total_used: 0,
+      windows_crossed: 0,
+    });
+    const sample = makeSample({ used: 0, reset: 1060 });
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.bucket.total_used).toBe(0);
+    expect(result.bucket.windows_crossed).toBe(0);
+    expect(result.delta).toBe(0);
+    expect(result.window_crossed).toBe(false);
+  });
+
+  it('scenario 2: window expires with stable nonzero usage → no crossing, no new usage', () => {
+    const bucket = makeBucket({
+      last_reset: 1000,
+      last_used: 5,
+      total_used: 0,
+      windows_crossed: 0,
+    });
+    const sample = makeSample({ used: 5, reset: 1060 });
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.bucket.total_used).toBe(0);
+    expect(result.bucket.windows_crossed).toBe(0);
+    expect(result.delta).toBe(0);
+    expect(result.window_crossed).toBe(false);
+  });
+
+  it('scenario 3: reset change + usage increased → delta applied, no crossing', () => {
+    const bucket = makeBucket({
+      last_reset: 1000,
+      last_used: 5,
+      total_used: 10,
+      windows_crossed: 0,
+    });
+    const sample = makeSample({ used: 10, reset: 1060 });
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.bucket.total_used).toBe(15); // 10 + delta(5)
+    expect(result.bucket.windows_crossed).toBe(0);
+    expect(result.delta).toBe(5);
+    expect(result.window_crossed).toBe(false);
+  });
+
+  it('scenario 4: genuine crossing — used drops', () => {
+    const bucket = makeBucket({
+      last_reset: 1000,
+      last_used: 150,
+      total_used: 200,
+      windows_crossed: 0,
+    });
+    const sample = makeSample({ used: 3, reset: 4600 });
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.bucket.total_used).toBe(203); // 200 + 3
+    expect(result.bucket.windows_crossed).toBe(1);
+    expect(result.delta).toBe(3);
+    expect(result.window_crossed).toBe(true);
+  });
+
+  it('scenario 5: genuine crossing — used drops to 0', () => {
+    const bucket = makeBucket({
+      last_reset: 1000,
+      last_used: 100,
+      total_used: 100,
+      windows_crossed: 0,
+    });
+    const sample = makeSample({ used: 0, reset: 4600 });
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.bucket.total_used).toBe(100); // 100 + 0
+    expect(result.bucket.windows_crossed).toBe(1);
+    expect(result.delta).toBe(0);
+    expect(result.window_crossed).toBe(true);
+  });
+
+  it('scenario 6: multi-poll through genuine crossing', () => {
+    let bucket = makeBucket({
+      last_reset: 1000,
+      last_used: 100,
+      total_used: 0,
+      windows_crossed: 0,
+    });
+
+    // Poll 1: same window, used goes 100 → 100 (baseline was 100)
+    // Actually let's start from init state perspective
+    // Poll 1: used=100, reset=1000 → same window, delta = 0
+    let result = updateBucket(bucket, makeSample({ used: 100, reset: 1000 }), 'ts1');
+    expect(result.bucket.total_used).toBe(0);
+    bucket = result.bucket;
+
+    // Poll 2: used=150, reset=1000 → same window, delta = 50
+    result = updateBucket(bucket, makeSample({ used: 150, reset: 1000 }), 'ts2');
+    expect(result.bucket.total_used).toBe(50);
+    bucket = result.bucket;
+
+    // Poll 3: used=3, reset=4600 → genuine crossing, delta = 3
+    result = updateBucket(bucket, makeSample({ used: 3, reset: 4600 }), 'ts3');
+    expect(result.bucket.total_used).toBe(53); // 50 + 3
+    expect(result.bucket.windows_crossed).toBe(1);
+  });
+
+  it('scenario 7: multi-poll through idle expiry — no crossing ever', () => {
+    let bucket = makeBucket({
+      last_reset: 1000,
+      last_used: 0,
+      total_used: 0,
+      windows_crossed: 0,
+    });
+
+    // Poll 1: used=0, reset=1000 → same window, delta = 0
+    let result = updateBucket(bucket, makeSample({ used: 0, reset: 1000 }), 'ts1');
+    expect(result.bucket.total_used).toBe(0);
+    expect(result.bucket.windows_crossed).toBe(0);
+    bucket = result.bucket;
+
+    // Poll 2: used=0, reset=1060 → window expired (idle), NO crossing
+    result = updateBucket(bucket, makeSample({ used: 0, reset: 1060 }), 'ts2');
+    expect(result.bucket.total_used).toBe(0);
+    expect(result.bucket.windows_crossed).toBe(0);
+    bucket = result.bucket;
+
+    // Poll 3: used=0, reset=1120 → another idle expiry, still NO crossing
+    result = updateBucket(bucket, makeSample({ used: 0, reset: 1120 }), 'ts3');
+    expect(result.bucket.total_used).toBe(0);
+    expect(result.bucket.windows_crossed).toBe(0);
+  });
+});
+
+// -----------------------------------------------------------------------------
 // createInitialState tests
 // -----------------------------------------------------------------------------
 

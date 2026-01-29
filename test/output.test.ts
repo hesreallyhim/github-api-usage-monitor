@@ -160,7 +160,85 @@ describe('renderMarkdown', () => {
     const data = makeSummaryData({ state: makeState({ buckets: {} }) });
     const markdown = renderMarkdown(data);
 
-    expect(markdown).toContain('No bucket data');
+    expect(markdown).toContain('No API usage detected');
+  });
+
+  it('only shows active buckets (total_used > 0) in table', () => {
+    const idleBucket = {
+      last_reset: 1706230800,
+      last_used: 0,
+      total_used: 0,
+      windows_crossed: 0,
+      anomalies: 0,
+      last_seen_ts: 'ts',
+      limit: 5000,
+      remaining: 5000,
+    };
+    const activeBucket = {
+      last_reset: 1706230800,
+      last_used: 50,
+      total_used: 50,
+      windows_crossed: 0,
+      anomalies: 0,
+      last_seen_ts: 'ts',
+      limit: 5000,
+      remaining: 4950,
+    };
+    const data = makeSummaryData({
+      state: makeState({
+        buckets: {
+          core: activeBucket,
+          search: activeBucket,
+          graphql: activeBucket,
+          // These 10 idle buckets should NOT appear in the table
+          code_scanning_upload: idleBucket,
+          actions_runner_registration: idleBucket,
+          scim: idleBucket,
+          dependency_snapshots: idleBucket,
+          code_search: idleBucket,
+          audit_log: idleBucket,
+          source_import: idleBucket,
+          integration_manifest: idleBucket,
+          packages: idleBucket,
+          dependency_graph: idleBucket,
+        },
+      }),
+    });
+    const markdown = renderMarkdown(data);
+
+    // Active buckets appear
+    expect(markdown).toContain('core');
+    expect(markdown).toContain('search');
+    expect(markdown).toContain('graphql');
+    // Idle buckets do not appear
+    expect(markdown).not.toContain('scim');
+    expect(markdown).not.toContain('audit_log');
+    expect(markdown).not.toContain('packages');
+  });
+
+  it('shows no-usage message when all buckets are idle', () => {
+    const idleBucket = {
+      last_reset: 1706230800,
+      last_used: 0,
+      total_used: 0,
+      windows_crossed: 0,
+      anomalies: 0,
+      last_seen_ts: 'ts',
+      limit: 5000,
+      remaining: 5000,
+    };
+    const data = makeSummaryData({
+      state: makeState({
+        buckets: {
+          core: idleBucket,
+          search: idleBucket,
+        },
+      }),
+    });
+    const markdown = renderMarkdown(data);
+
+    expect(markdown).toContain('No API usage detected');
+    expect(markdown).not.toContain('| Bucket |');
   });
 });
 
@@ -264,15 +342,15 @@ describe('generateWarnings', () => {
     expect(warnings).toContainEqual(expect.stringContaining('3 anomaly'));
   });
 
-  it('warns on multiple window crosses', () => {
+  it('warns on multiple window crosses for active buckets', () => {
     const baseBucket = {
       last_reset: 1706230800,
-      last_used: 0,
-      total_used: 0,
+      last_used: 50,
+      total_used: 100,
       anomalies: 0,
       last_seen_ts: 'ts',
       limit: 5000,
-      remaining: 5000,
+      remaining: 4950,
     };
     const state = makeState({
       buckets: {
@@ -290,6 +368,49 @@ describe('generateWarnings', () => {
     const warnings = generateWarnings(state);
 
     expect(warnings).toContainEqual(expect.stringContaining('Network timeout'));
+  });
+
+  it('does NOT warn about window crosses on idle buckets (total_used = 0)', () => {
+    const state = makeState({
+      buckets: {
+        code_scanning_upload: {
+          last_reset: 1706230800,
+          last_used: 0,
+          total_used: 0,
+          windows_crossed: 3, // idle bucket with window rotations
+          anomalies: 0,
+          last_seen_ts: 'ts',
+          limit: 5000,
+          remaining: 5000,
+        },
+      },
+    });
+    const warnings = generateWarnings(state);
+
+    // Should NOT contain a window-crossing warning for an idle bucket
+    const windowWarnings = warnings.filter(w => w.includes('window'));
+    expect(windowWarnings).toHaveLength(0);
+  });
+
+  it('DOES warn about window crosses on active buckets', () => {
+    const state = makeState({
+      buckets: {
+        core: {
+          last_reset: 1706230800,
+          last_used: 100,
+          total_used: 200,
+          windows_crossed: 2,
+          anomalies: 0,
+          last_seen_ts: 'ts',
+          limit: 5000,
+          remaining: 4900,
+        },
+      },
+    });
+    const warnings = generateWarnings(state);
+
+    expect(warnings).toContainEqual(expect.stringContaining('core'));
+    expect(warnings).toContainEqual(expect.stringContaining('2 times'));
   });
 
   it('returns empty array when no issues', () => {

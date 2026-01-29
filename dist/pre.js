@@ -31400,14 +31400,18 @@ async function main() {
  * Algorithm (per poll, per bucket):
  *   if bucket not initialized:
  *     initialize with current reset/used
- *   else if reset == last_reset (same window):
- *     delta = used - last_used
- *     if delta < 0: anomaly (do not subtract)
- *     else: total_used += delta
- *   else (new window):
+ *   else if reset changed AND used < last_used (genuine window reset):
  *     windows_crossed += 1
  *     total_used += used (include post-reset usage)
  *     last_reset = reset
+ *   else if reset changed AND used >= last_used (timestamp rotation, not a real reset):
+ *     delta = used - last_used
+ *     total_used += delta
+ *     last_reset = reset
+ *   else (same window):
+ *     delta = used - last_used
+ *     if delta < 0: anomaly (do not subtract)
+ *     else: total_used += delta
  *   last_used = used
  */
 
@@ -31438,9 +31442,11 @@ function initBucket(sample, timestamp) {
  * @param timestamp - ISO timestamp of observation
  */
 function updateBucket(bucket, sample, timestamp) {
-    // Check if reset changed (window boundary)
-    if (sample.reset !== bucket.last_reset) {
-        // New window: include post-reset used count
+    const resetChanged = sample.reset !== bucket.last_reset;
+    const usedDecreased = sample.used < bucket.last_used;
+    // Genuine window reset: reset timestamp changed AND used count dropped.
+    // This means the rate-limit window actually rolled over and the counter reset.
+    if (resetChanged && usedDecreased) {
         return {
             bucket: {
                 last_reset: sample.reset,
@@ -31455,6 +31461,27 @@ function updateBucket(bucket, sample, timestamp) {
             delta: sample.used,
             anomaly: false,
             window_crossed: true,
+        };
+    }
+    // Reset timestamp rotated but used didn't drop (e.g. GitHub rotating
+    // timestamps on unused buckets, or continued usage across a boundary).
+    // Treat as a normal delta — update last_reset but don't count a crossing.
+    if (resetChanged) {
+        const delta = sample.used - bucket.last_used;
+        return {
+            bucket: {
+                last_reset: sample.reset,
+                last_used: sample.used,
+                total_used: bucket.total_used + delta,
+                windows_crossed: bucket.windows_crossed,
+                anomalies: bucket.anomalies,
+                last_seen_ts: timestamp,
+                limit: sample.limit,
+                remaining: sample.remaining,
+            },
+            delta,
+            anomaly: false,
+            window_crossed: false,
         };
     }
     // Same window: calculate delta

@@ -54,13 +54,13 @@ export function renderMarkdown(data: SummaryData): string {
   lines.push(`**Duration:** ${duration} | **Polls:** ${state.poll_count} | **Failures:** ${state.poll_failures}`);
   lines.push('');
 
-  // Bucket table
-  const buckets = getSortedBuckets(state);
-  if (buckets.length > 0) {
+  // Bucket table — only show buckets with actual usage
+  const activeBuckets = getActiveBuckets(state);
+  if (activeBuckets.length > 0) {
     lines.push('| Bucket | Used (job) | Windows | Remaining | Resets at (UTC) |');
     lines.push('|--------|----------:|--------:|----------:|-----------------|');
 
-    for (const [name, bucket] of buckets) {
+    for (const [name, bucket] of activeBuckets) {
       const resetTime = formatResetTime(bucket.last_reset);
       lines.push(
         `| ${name} | ${bucket.total_used} | ${bucket.windows_crossed} | ${bucket.remaining} | ${resetTime} |`
@@ -68,7 +68,7 @@ export function renderMarkdown(data: SummaryData): string {
     }
     lines.push('');
   } else {
-    lines.push('*No bucket data collected.*');
+    lines.push('*No API usage detected during this job.*');
     lines.push('');
   }
 
@@ -131,6 +131,14 @@ function getSortedBuckets(state: ReducerState): [string, BucketState][] {
 }
 
 /**
+ * Returns only buckets with actual usage (total_used > 0), sorted by total_used descending.
+ * Idle buckets (total_used = 0) are filtered out to keep the summary clean.
+ */
+function getActiveBuckets(state: ReducerState): [string, BucketState][] {
+  return getSortedBuckets(state).filter(([, bucket]) => bucket.total_used > 0);
+}
+
+/**
  * Formats duration in human-readable form.
  */
 function formatDuration(seconds: number): string {
@@ -189,9 +197,9 @@ export function generateWarnings(state: ReducerState): string[] {
     warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset)`);
   }
 
-  // Multiple window crosses
+  // Multiple window crosses (only for active buckets — idle buckets rotate windows harmlessly)
   for (const [name, bucket] of Object.entries(state.buckets)) {
-    if (bucket.windows_crossed > 1) {
+    if (bucket.windows_crossed > 1 && bucket.total_used > 0) {
       warnings.push(`${name} window crossed ${bucket.windows_crossed} times; totals are interval-bounded`);
     }
   }

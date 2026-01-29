@@ -99,6 +99,19 @@ async function handlePost(): Promise<void> {
   finalState = markStopped(finalState);
   writeState(finalState);
 
+  // Debug: dump per-bucket state for self-test analysis
+  core.info('--- Debug: per-bucket state ---');
+  core.info(`Poll count: ${finalState.poll_count} | Failures: ${finalState.poll_failures}`);
+  core.info(`Started: ${finalState.started_at_ts} | Stopped: ${finalState.stopped_at_ts}`);
+  for (const [name, bucket] of Object.entries(finalState.buckets)) {
+    core.info(
+      `  ${name}: used=${bucket.last_used}, last_used=${bucket.last_used}, ` +
+      `total_used=${bucket.total_used}, windows_crossed=${bucket.windows_crossed}, ` +
+      `last_reset=${bucket.last_reset}, remaining=${bucket.remaining}, limit=${bucket.limit}`
+    );
+  }
+  core.info('--- End debug ---');
+
   // Calculate duration
   const startTime = new Date(finalState.started_at_ts).getTime();
   const endTime = finalState.stopped_at_ts
