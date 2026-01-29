@@ -258,7 +258,9 @@
         "anomalies: number",
         "last_seen_ts: string (ISO)",
         "limit: number",
-        "remaining: number"
+        "remaining: number",
+        "first_used: number",
+        "first_remaining: number"
       ]
     },
     {

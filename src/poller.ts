@@ -18,11 +18,13 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
-import type { ReducerState } from './types';
+import type { ReducerState, PollLogEntry, PollLogBucketSnapshot } from './types';
 import { POLL_INTERVAL_SECONDS, MAX_LIFETIME_MS } from './types';
 import { fetchRateLimit } from './github';
 import { reduce, recordFailure, createInitialState, markStopped } from './reducer';
+import type { ReduceResult } from './reducer';
 import { readState, writeState } from './state';
+import { appendPollLogEntry } from './poll-log';
 
 // -----------------------------------------------------------------------------
 // Port: poller.spawn
@@ -376,8 +378,33 @@ async function performPoll(state: ReducerState, token: string): Promise<ReducerS
     return newState;
   }
 
-  const { state: newState } = reduce(state, result.data, timestamp);
+  const reduceResult: ReduceResult = reduce(state, result.data, timestamp);
+  const newState = reduceResult.state;
   writeState(newState);
+
+  // Build and append diagnostic poll log entry
+  const bucketSnapshots: Record<string, PollLogBucketSnapshot> = {};
+  for (const [name, update] of Object.entries(reduceResult.updates)) {
+    const sample = result.data.resources[name];
+    if (sample) {
+      bucketSnapshots[name] = {
+        used: sample.used,
+        remaining: sample.remaining,
+        reset: sample.reset,
+        limit: sample.limit,
+        delta: update.delta,
+        window_crossed: update.window_crossed,
+        anomaly: update.anomaly,
+      };
+    }
+  }
+  const logEntry: PollLogEntry = {
+    timestamp,
+    poll_number: newState.poll_count,
+    buckets: bucketSnapshots,
+  };
+  appendPollLogEntry(logEntry);
+
   return newState;
 }
 

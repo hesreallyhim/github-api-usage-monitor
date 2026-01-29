@@ -39,6 +39,13 @@ jobs:
             echo "state.json not found"
           fi
 
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "Baseline — zero calls"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
+
   core-5:
     runs-on: ubuntu-latest
     needs: [baseline]
@@ -80,35 +87,63 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
           expectations = {
               'core': {'delta': 5, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "5 core GET calls"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   core-10:
     runs-on: ubuntu-latest
@@ -151,35 +186,63 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
           expectations = {
               'core': {'delta': 10, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "10 core GET calls"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   search-2:
     runs-on: ubuntu-latest
@@ -222,35 +285,63 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
           expectations = {
               'search': {'delta': 2, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "2 search calls"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   code-search-2:
     runs-on: ubuntu-latest
@@ -293,35 +384,63 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
           expectations = {
               'code_search': {'delta': 2, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "2 code_search calls"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   graphql-2:
     runs-on: ubuntu-latest
@@ -366,35 +485,63 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
           expectations = {
               'graphql': {'delta': 2, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "2 GraphQL calls"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   mixed-small:
     runs-on: ubuntu-latest
@@ -461,13 +608,15 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -476,22 +625,48 @@ jobs:
               'search': {'delta': 2, 'max_windows': 0},
               'graphql': {'delta': 2, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "Mixed — 2 core + 2 search + 2 graphql"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   core-burst:
     runs-on: ubuntu-latest
@@ -533,35 +708,63 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
           expectations = {
               'core': {'delta': 5, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "5 core GET calls — burst (no sleep)"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   search-window-cross:
     runs-on: ubuntu-latest
@@ -604,35 +807,63 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
           expectations = {
               'search': {'delta': 2, 'max_windows': 1}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "2 search calls — 65s apart (window crossing)"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   idle-check:
     runs-on: ubuntu-latest
@@ -657,6 +888,13 @@ jobs:
           else
             echo "state.json not found"
           fi
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "Idle check — no calls, 120s observation"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   core-then-search:
     runs-on: ubuntu-latest
@@ -710,13 +948,15 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -724,22 +964,48 @@ jobs:
               'core': {'delta': 3, 'max_windows': 0},
               'search': {'delta': 2, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "3 core + 2 search (sequential)"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"
 
   graphql-5:
     runs-on: ubuntu-latest
@@ -784,32 +1050,60 @@ jobs:
           fi
 
       - name: Validate expectations
-        if: inputs.strict_validation == 'true'
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          STRICT_VALIDATION: ${{ inputs.strict_validation }}
         run: |
           python3 << 'PYEOF'
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
           expectations = {
               'graphql': {'delta': 5, 'max_windows': 0}
           }
-          errors = []
+          results = []  # list of (bucket, check_name, passed, detail)
           for bucket_name, expect in expectations.items():
               b = buckets.get(bucket_name)
               if not b:
-                  errors.append(bucket_name + ': not found in state')
+                  results.append((bucket_name, 'exists', False, 'not found in state'))
                   continue
-              if b['total_used'] < expect['delta']:
-                  errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))
-              if b['windows_crossed'] > expect['max_windows']:
-                  errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))
-          if errors:
-              print('VALIDATION FAILED:')
-              for e in errors: print('  - ' + e)
+              used_ok = b['total_used'] >= expect['delta']
+              results.append((bucket_name, 'total_used', used_ok,
+                  str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))
+              win_ok = b['windows_crossed'] <= expect['max_windows']
+              results.append((bucket_name, 'windows_crossed', win_ok,
+                  str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))
+
+          # Write markdown summary
+          md = []
+          all_passed = all(r[2] for r in results)
+          icon = 'PASS' if all_passed else 'FAIL'
+          md.append('### Validation: ' + icon)
+          md.append('')
+          md.append('| Bucket | Check | Result | Detail |')
+          md.append('|--------|-------|:------:|--------|')
+          for bucket_name, check, passed, detail in results:
+              mark = 'pass' if passed else 'FAIL'
+              md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')
+          md.append('')
+          md_text = '\n'.join(md)
+          print(md_text)
+          if summary_path:
+              with open(summary_path, 'a') as f:
+                  f.write(md_text + '\n')
+
+          # Only fail the step when strict validation is enabled
+          if not all_passed and strict:
               sys.exit(1)
-          print('All assertions passed')
           PYEOF
+
+      - name: Diagnostic details
+        if: always()
+        env:
+          STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
+          SCENARIO_NAME: "5 GraphQL calls"
+        run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"

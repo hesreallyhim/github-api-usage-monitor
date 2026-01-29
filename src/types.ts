@@ -56,6 +56,10 @@ export interface BucketState {
   limit: number;
   /** Last observed remaining */
   remaining: number;
+  /** First observed 'used' value (baseline, set on init) */
+  first_used: number;
+  /** First observed 'remaining' value (baseline, set on init) */
+  first_remaining: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -127,6 +131,39 @@ export const POLL_INTERVAL_SECONDS = 30;
 export const STATE_DIR_NAME = 'github-api-usage-monitor';
 export const STATE_FILE_NAME = 'state.json';
 export const PID_FILE_NAME = 'poller.pid';
+
+export const POLL_LOG_FILE_NAME = 'poll-log.jsonl';
+
+// -----------------------------------------------------------------------------
+// PollLogEntry
+// Diagnostic per-poll snapshot for the JSONL poll log
+// -----------------------------------------------------------------------------
+
+export interface PollLogBucketSnapshot {
+  /** Observed 'used' value */
+  used: number;
+  /** Observed 'remaining' value */
+  remaining: number;
+  /** Reset epoch seconds */
+  reset: number;
+  /** Rate limit ceiling */
+  limit: number;
+  /** Delta applied this poll */
+  delta: number;
+  /** True if a window boundary was crossed */
+  window_crossed: boolean;
+  /** True if an anomaly was detected */
+  anomaly: boolean;
+}
+
+export interface PollLogEntry {
+  /** ISO timestamp of this poll */
+  timestamp: string;
+  /** Sequential poll number (1-based) */
+  poll_number: number;
+  /** Per-bucket snapshot */
+  buckets: Record<string, PollLogBucketSnapshot>;
+}
 
 /** Timeout for fetch requests to GitHub API (milliseconds) */
 export const FETCH_TIMEOUT_MS = 10000;

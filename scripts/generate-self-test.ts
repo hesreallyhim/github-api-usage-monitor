@@ -104,28 +104,52 @@ function generateValidationScript(scenario: Scenario): string {
   // NOTE: This script is embedded inside a YAML block scalar (run: |) and then
   // passed to python3 via heredoc, so we can use both single and double quotes
   // freely. We avoid f-strings with bracket expressions to keep it simple.
+  //
+  // Always runs and writes results to $GITHUB_STEP_SUMMARY.
+  // Only exits non-zero when $STRICT_VALIDATION == 'true'.
   const lines: string[] = [
     "import json, sys, os",
     "state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')",
+    "summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')",
+    "strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'",
     "with open(state_path) as f:",
     "    state = json.load(f)",
     "buckets = state.get('buckets', {})",
     `expectations = ${expectDict}`,
-    "errors = []",
+    "results = []  # list of (bucket, check_name, passed, detail)",
     "for bucket_name, expect in expectations.items():",
     "    b = buckets.get(bucket_name)",
     "    if not b:",
-    "        errors.append(bucket_name + ': not found in state')",
+    "        results.append((bucket_name, 'exists', False, 'not found in state'))",
     "        continue",
-    "    if b['total_used'] < expect['delta']:",
-    "        errors.append(bucket_name + ': total_used=' + str(b['total_used']) + ' < expected ' + str(expect['delta']))",
-    "    if b['windows_crossed'] > expect['max_windows']:",
-    "        errors.append(bucket_name + ': windows_crossed=' + str(b['windows_crossed']) + ' > max ' + str(expect['max_windows']))",
-    "if errors:",
-    "    print('VALIDATION FAILED:')",
-    "    for e in errors: print('  - ' + e)",
+    "    used_ok = b['total_used'] >= expect['delta']",
+    "    results.append((bucket_name, 'total_used', used_ok,",
+    "        str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))",
+    "    win_ok = b['windows_crossed'] <= expect['max_windows']",
+    "    results.append((bucket_name, 'windows_crossed', win_ok,",
+    "        str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))",
+    "",
+    "# Write markdown summary",
+    "md = []",
+    "all_passed = all(r[2] for r in results)",
+    "icon = 'PASS' if all_passed else 'FAIL'",
+    "md.append('### Validation: ' + icon)",
+    "md.append('')",
+    "md.append('| Bucket | Check | Result | Detail |')",
+    "md.append('|--------|-------|:------:|--------|')",
+    "for bucket_name, check, passed, detail in results:",
+    "    mark = 'pass' if passed else 'FAIL'",
+    "    md.append('| ' + bucket_name + ' | ' + check + ' | ' + mark + ' | ' + detail + ' |')",
+    "md.append('')",
+    "md_text = '\\n'.join(md)",
+    "print(md_text)",
+    "if summary_path:",
+    "    with open(summary_path, 'a') as f:",
+    "        f.write(md_text + '\\n')",
+    "",
+    "# Only fail the step when strict validation is enabled",
+    "if not all_passed and strict:",
     "    sys.exit(1)",
-    "print('All assertions passed')",
   ];
 
   return lines.join("\n");
@@ -191,14 +215,14 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
   lines.push(`          echo "state.json not found"`);
   lines.push(`        fi`);
 
-  // Validation step (only if scenario has expected entries)
+  // Validation step — always runs; only fails when strict_validation is enabled
   const hasExpected = Object.keys(scenario.expected).length > 0;
   if (hasExpected) {
     lines.push(``);
     lines.push(`    - name: Validate expectations`);
-    lines.push(`      if: inputs.strict_validation == 'true'`);
     lines.push(`      env:`);
     lines.push(`        STATE_DIR: \${{ runner.temp }}/github-api-usage-monitor`);
+    lines.push(`        STRICT_VALIDATION: \${{ inputs.strict_validation }}`);
     lines.push(`      run: |`);
     lines.push(`        python3 << 'PYEOF'`);
 
@@ -207,6 +231,15 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
 
     lines.push(`        PYEOF`);
   }
+
+  // Diagnostic details step — always runs, writes <details> block to step summary
+  lines.push(``);
+  lines.push(`    - name: Diagnostic details`);
+  lines.push(`      if: always()`);
+  lines.push(`      env:`);
+  lines.push(`        STATE_DIR: \${{ runner.temp }}/github-api-usage-monitor`);
+  lines.push(`        SCENARIO_NAME: "${scenario.name}"`);
+  lines.push(`      run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"`);
 
   return lines.join("\n");
 }

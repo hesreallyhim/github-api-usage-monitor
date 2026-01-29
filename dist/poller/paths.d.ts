@@ -24,6 +24,10 @@ export declare function getStatePath(): string;
  */
 export declare function getPidPath(): string;
 /**
+ * Returns the absolute path to poll-log.jsonl
+ */
+export declare function getPollLogPath(): string;
+/**
  * Returns the path for atomic write temporary file
  */
 export declare function getStateTmpPath(): string;

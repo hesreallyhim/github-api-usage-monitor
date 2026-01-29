@@ -30860,6 +30860,7 @@ const types_POLL_INTERVAL_SECONDS = 30;
 const STATE_DIR_NAME = 'github-api-usage-monitor';
 const STATE_FILE_NAME = 'state.json';
 const PID_FILE_NAME = 'poller.pid';
+const types_POLL_LOG_FILE_NAME = 'poll-log.jsonl';
 /** Timeout for fetch requests to GitHub API (milliseconds) */
 const FETCH_TIMEOUT_MS = 10000;
 /** Maximum poller lifetime as defense-in-depth (6 hours in milliseconds) */
@@ -30908,6 +30909,15 @@ function getStatePath() {
  */
 function paths_getPidPath() {
     return external_path_namespaceObject.join(paths_getStateDir(), PID_FILE_NAME);
+}
+// -----------------------------------------------------------------------------
+// Port: paths.pollLogPath
+// -----------------------------------------------------------------------------
+/**
+ * Returns the absolute path to poll-log.jsonl
+ */
+function paths_getPollLogPath() {
+    return path.join(paths_getStateDir(), POLL_LOG_FILE_NAME);
 }
 // -----------------------------------------------------------------------------
 // Helpers
@@ -31145,6 +31155,41 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+;// CONCATENATED MODULE: ./src/poll-log.ts
+/**
+ * Poll Log
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - pollLog.append
+ *
+ * Append-only JSONL diagnostic log of per-poll snapshots.
+ * Each line is a self-contained JSON object (PollLogEntry).
+ * Used by self-test diagnostics for detailed debugging;
+ * the main action summary (output.ts) does not read this file.
+ */
+
+
+// -----------------------------------------------------------------------------
+// Port: pollLog.append
+// -----------------------------------------------------------------------------
+/**
+ * Appends a single poll log entry as a JSON line to the poll log file.
+ * Creates the file if it does not exist.
+ *
+ * Best-effort: swallows write errors so the poller is never disrupted
+ * by diagnostic logging failures.
+ */
+function poll_log_appendPollLogEntry(entry) {
+    try {
+        const line = JSON.stringify(entry) + '\n';
+        fs.appendFileSync(getPollLogPath(), line, 'utf-8');
+    }
+    catch {
+        // Diagnostic-only — never disrupt the poller
+    }
+}
+
 ;// CONCATENATED MODULE: ./src/poller.ts
 /**
  * Poller Process
@@ -31163,6 +31208,7 @@ function sleep(ms) {
  *   - Updates state file atomically
  *   - Handles SIGTERM for graceful shutdown
  */
+
 
 
 
@@ -31435,8 +31481,31 @@ async function performPoll(state, token) {
         writeState(newState);
         return newState;
     }
-    const { state: newState } = reduce(state, result.data, timestamp);
+    const reduceResult = reduce(state, result.data, timestamp);
+    const newState = reduceResult.state;
     writeState(newState);
+    // Build and append diagnostic poll log entry
+    const bucketSnapshots = {};
+    for (const [name, update] of Object.entries(reduceResult.updates)) {
+        const sample = result.data.resources[name];
+        if (sample) {
+            bucketSnapshots[name] = {
+                used: sample.used,
+                remaining: sample.remaining,
+                reset: sample.reset,
+                limit: sample.limit,
+                delta: update.delta,
+                window_crossed: update.window_crossed,
+                anomaly: update.anomaly,
+            };
+        }
+    }
+    const logEntry = {
+        timestamp,
+        poll_number: newState.poll_count,
+        buckets: bucketSnapshots,
+    };
+    appendPollLogEntry(logEntry);
     return newState;
 }
 // -----------------------------------------------------------------------------
@@ -31505,6 +31574,8 @@ function initBucket(sample, timestamp) {
         last_seen_ts: timestamp,
         limit: sample.limit,
         remaining: sample.remaining,
+        first_used: sample.used,
+        first_remaining: sample.remaining,
     };
 }
 /**
@@ -31531,6 +31602,8 @@ function updateBucket(bucket, sample, timestamp) {
                 last_seen_ts: timestamp,
                 limit: sample.limit,
                 remaining: sample.remaining,
+                first_used: bucket.first_used,
+                first_remaining: bucket.first_remaining,
             },
             delta: sample.used,
             anomaly: false,
@@ -31552,6 +31625,8 @@ function updateBucket(bucket, sample, timestamp) {
                 last_seen_ts: timestamp,
                 limit: sample.limit,
                 remaining: sample.remaining,
+                first_used: bucket.first_used,
+                first_remaining: bucket.first_remaining,
             },
             delta,
             anomaly: false,

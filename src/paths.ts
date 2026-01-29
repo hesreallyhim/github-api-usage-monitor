@@ -10,7 +10,7 @@
  */
 
 import * as path from 'path';
-import { STATE_DIR_NAME, STATE_FILE_NAME, PID_FILE_NAME } from './types';
+import { STATE_DIR_NAME, STATE_FILE_NAME, PID_FILE_NAME, POLL_LOG_FILE_NAME } from './types';
 
 // -----------------------------------------------------------------------------
 // Port: paths.statePath
@@ -46,6 +46,17 @@ export function getStatePath(): string {
  */
 export function getPidPath(): string {
   return path.join(getStateDir(), PID_FILE_NAME);
+}
+
+// -----------------------------------------------------------------------------
+// Port: paths.pollLogPath
+// -----------------------------------------------------------------------------
+
+/**
+ * Returns the absolute path to poll-log.jsonl
+ */
+export function getPollLogPath(): string {
+  return path.join(getStateDir(), POLL_LOG_FILE_NAME);
 }
 
 // -----------------------------------------------------------------------------

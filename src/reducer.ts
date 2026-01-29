@@ -47,6 +47,8 @@ export function initBucket(sample: RateLimitSample, timestamp: string): BucketSt
     last_seen_ts: timestamp,
     limit: sample.limit,
     remaining: sample.remaining,
+    first_used: sample.used,
+    first_remaining: sample.remaining,
   };
 }
 
@@ -94,6 +96,8 @@ export function updateBucket(
         last_seen_ts: timestamp,
         limit: sample.limit,
         remaining: sample.remaining,
+        first_used: bucket.first_used,
+        first_remaining: bucket.first_remaining,
       },
       delta: sample.used,
       anomaly: false,
@@ -116,6 +120,8 @@ export function updateBucket(
         last_seen_ts: timestamp,
         limit: sample.limit,
         remaining: sample.remaining,
+        first_used: bucket.first_used,
+        first_remaining: bucket.first_remaining,
       },
       delta,
       anomaly: false,
