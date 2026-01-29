@@ -15,6 +15,7 @@
  *   - Updates state file atomically
  *   - Handles SIGTERM for graceful shutdown
  */
+import type { ReducerState } from './types';
 export interface SpawnResult {
     success: true;
     pid: number;
@@ -55,6 +56,25 @@ export declare function killPoller(pid: number): KillOutcome;
  * Sends SIGTERM, waits for exit, escalates to SIGKILL if needed.
  */
 export declare function killPollerWithVerification(pid: number): Promise<KillOutcome>;
+export interface SleepPlan {
+    /** Milliseconds to sleep before next poll */
+    sleepMs: number;
+    /** If true, perform a second poll shortly after the first (burst mode) */
+    burst: boolean;
+    /** If burst, milliseconds to sleep between the two polls */
+    burstGapMs: number;
+}
+/**
+ * Computes when to poll next based on upcoming bucket resets.
+ *
+ * Instead of a fixed interval, this targets polls just before bucket resets
+ * to minimize the uncertainty window — the gap between the last pre-reset
+ * observation and the actual reset.
+ *
+ * When a reset is imminent (≤8s away), enters "burst mode": two polls
+ * bracket the reset boundary to capture both pre-reset and post-reset state.
+ */
+export declare function computeSleepPlan(state: ReducerState, baseIntervalMs: number, nowEpochSeconds: number): SleepPlan;
 /**
  * Entry point when run as child process.
  * Exported for use by poller-entry.ts

@@ -31295,6 +31295,47 @@ function isProcessRunning(pid) {
 function poller_sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
+const BURST_THRESHOLD_S = 8;
+const PRE_RESET_BUFFER_S = 3;
+const POST_RESET_DELAY_S = 3;
+const MIN_SLEEP_MS = 1000;
+/**
+ * Computes when to poll next based on upcoming bucket resets.
+ *
+ * Instead of a fixed interval, this targets polls just before bucket resets
+ * to minimize the uncertainty window — the gap between the last pre-reset
+ * observation and the actual reset.
+ *
+ * When a reset is imminent (≤8s away), enters "burst mode": two polls
+ * bracket the reset boundary to capture both pre-reset and post-reset state.
+ */
+function computeSleepPlan(state, baseIntervalMs, nowEpochSeconds) {
+    const activeResets = Object.values(state.buckets)
+        .filter((b) => b.total_used > 0)
+        .map((b) => b.last_reset)
+        .filter((r) => r > nowEpochSeconds);
+    if (activeResets.length === 0) {
+        return { sleepMs: baseIntervalMs, burst: false, burstGapMs: 0 };
+    }
+    const soonestReset = Math.min(...activeResets);
+    const secondsUntilReset = soonestReset - nowEpochSeconds;
+    if (secondsUntilReset <= 0) {
+        // Reset already passed — poll quickly to pick up new window
+        return { sleepMs: Math.min(2000, baseIntervalMs), burst: false, burstGapMs: 0 };
+    }
+    if (secondsUntilReset <= BURST_THRESHOLD_S) {
+        // Close to reset — burst mode: poll before and after
+        const preResetSleep = Math.max((secondsUntilReset - PRE_RESET_BUFFER_S) * 1000, MIN_SLEEP_MS);
+        const burstGap = (PRE_RESET_BUFFER_S + POST_RESET_DELAY_S) * 1000;
+        return { sleepMs: preResetSleep, burst: true, burstGapMs: burstGap };
+    }
+    if (secondsUntilReset * 1000 < baseIntervalMs) {
+        // Reset coming before next regular poll — target pre-reset
+        const targetSleep = (secondsUntilReset - PRE_RESET_BUFFER_S) * 1000;
+        return { sleepMs: Math.max(targetSleep, MIN_SLEEP_MS), burst: false, burstGapMs: 0 };
+    }
+    return { sleepMs: baseIntervalMs, burst: false, burstGapMs: 0 };
+}
 // -----------------------------------------------------------------------------
 // Poller main loop (when run as child process)
 // -----------------------------------------------------------------------------
@@ -31347,8 +31388,13 @@ async function runPollerLoop(token, intervalSeconds) {
             writeState(state);
             process.exit(0);
         }
-        await poller_sleep(intervalSeconds * 1000);
+        const plan = computeSleepPlan(state, intervalSeconds * 1000, Math.floor(Date.now() / 1000));
+        await poller_sleep(plan.sleepMs);
         state = await performPoll(state, token);
+        if (plan.burst) {
+            await poller_sleep(plan.burstGapMs);
+            state = await performPoll(state, token);
+        }
     }
 }
 /**
