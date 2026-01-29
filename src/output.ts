@@ -51,7 +51,9 @@ export function renderMarkdown(data: SummaryData): string {
 
   // Duration and poll info
   const duration = formatDuration(duration_seconds);
-  lines.push(`**Duration:** ${duration} | **Polls:** ${state.poll_count} | **Failures:** ${state.poll_failures}`);
+  lines.push(
+    `**Duration:** ${duration} | **Polls:** ${state.poll_count} | **Failures:** ${state.poll_failures}`,
+  );
   lines.push('');
 
   // Bucket table — only show buckets with actual usage
@@ -63,7 +65,7 @@ export function renderMarkdown(data: SummaryData): string {
     for (const [name, bucket] of activeBuckets) {
       const resetTime = formatResetTime(bucket.last_reset);
       lines.push(
-        `| ${name} | ${bucket.total_used} | ${bucket.windows_crossed} | ${bucket.remaining} | ${resetTime} |`
+        `| ${name} | ${bucket.total_used} | ${bucket.windows_crossed} | ${bucket.remaining} | ${resetTime} |`,
       );
     }
     lines.push('');
@@ -200,7 +202,9 @@ export function generateWarnings(state: ReducerState): string[] {
   // Multiple window crosses (only for active buckets — idle buckets rotate windows harmlessly)
   for (const [name, bucket] of Object.entries(state.buckets)) {
     if (bucket.windows_crossed > 1 && bucket.total_used > 0) {
-      warnings.push(`${name} window crossed ${bucket.windows_crossed} times; totals are interval-bounded`);
+      warnings.push(
+        `${name} window crossed ${bucket.windows_crossed} times; totals are interval-bounded`,
+      );
     }
   }
 

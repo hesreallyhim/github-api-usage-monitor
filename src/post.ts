@@ -106,8 +106,8 @@ async function handlePost(): Promise<void> {
   for (const [name, bucket] of Object.entries(finalState.buckets)) {
     core.info(
       `  ${name}: used=${bucket.last_used}, last_used=${bucket.last_used}, ` +
-      `total_used=${bucket.total_used}, windows_crossed=${bucket.windows_crossed}, ` +
-      `last_reset=${bucket.last_reset}, remaining=${bucket.remaining}, limit=${bucket.limit}`
+        `total_used=${bucket.total_used}, windows_crossed=${bucket.windows_crossed}, ` +
+        `last_reset=${bucket.last_reset}, remaining=${bucket.remaining}, limit=${bucket.limit}`,
     );
   }
   core.info('--- End debug ---');

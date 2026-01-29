@@ -66,12 +66,12 @@ describe('isValidSample', () => {
   });
 
   it('returns false for wrong types', () => {
-    expect(
-      isValidSample({ limit: '5000', used: 100, remaining: 4900, reset: 1706200000 })
-    ).toBe(false);
-    expect(
-      isValidSample({ limit: 5000, used: '100', remaining: 4900, reset: 1706200000 })
-    ).toBe(false);
+    expect(isValidSample({ limit: '5000', used: 100, remaining: 4900, reset: 1706200000 })).toBe(
+      false,
+    );
+    expect(isValidSample({ limit: 5000, used: '100', remaining: 4900, reset: 1706200000 })).toBe(
+      false,
+    );
   });
 });
 
@@ -124,7 +124,7 @@ describe('parseRateLimitResponse', () => {
       parseRateLimitResponse({
         resources: { core: { limit: 'invalid' } },
         rate: {},
-      })
+      }),
     ).toBeNull();
   });
 
@@ -275,13 +275,15 @@ describe('fetchRateLimit', () => {
   it('passes abort signal to fetch', async () => {
     // Mock fetch to capture the signal
     let capturedSignal: AbortSignal | undefined;
-    const mockFetch = vi.fn().mockImplementation((_url: string, options: RequestInit | undefined) => {
-      capturedSignal = options?.signal as AbortSignal | undefined;
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(standardResponse),
+    const mockFetch = vi
+      .fn()
+      .mockImplementation((_url: string, options: RequestInit | undefined) => {
+        capturedSignal = options?.signal as AbortSignal | undefined;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(standardResponse),
+        });
       });
-    });
     vi.stubGlobal('fetch', mockFetch);
 
     await fetchRateLimit('test-token');
@@ -295,14 +297,16 @@ describe('fetchRateLimit', () => {
     // 1. Capturing the signal passed to fetch
     // 2. Verifying fetch was called with a signal that will abort
     let capturedSignal: AbortSignal | undefined;
-    const mockFetch = vi.fn().mockImplementation((_url: string, options: RequestInit | undefined) => {
-      capturedSignal = options?.signal as AbortSignal | undefined;
-      // Return a valid response for this test
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(standardResponse),
+    const mockFetch = vi
+      .fn()
+      .mockImplementation((_url: string, options: RequestInit | undefined) => {
+        capturedSignal = options?.signal as AbortSignal | undefined;
+        // Return a valid response for this test
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(standardResponse),
+        });
       });
-    });
     vi.stubGlobal('fetch', mockFetch);
 
     await fetchRateLimit('test-token');

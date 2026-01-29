@@ -139,7 +139,7 @@ export function isValidState(obj: unknown): obj is ReducerState {
     return false;
   }
 
-    // Required fields
+  // Required fields
   if (!isARealObject(obj['buckets'])) {
     return false;
   }
@@ -255,7 +255,7 @@ export type VerifyStartupOutcome = VerifyStartupResult | VerifyStartupError;
  * @returns Success or error with details
  */
 export async function verifyPollerStartup(
-  timeoutMs: number = STARTUP_TIMEOUT_MS
+  timeoutMs: number = STARTUP_TIMEOUT_MS,
 ): Promise<VerifyStartupOutcome> {
   const startTime = Date.now();
 

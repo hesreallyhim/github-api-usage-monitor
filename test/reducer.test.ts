@@ -205,17 +205,13 @@ describe('updateBucket - reset boundary', () => {
     let result = updateBucket(
       bucket,
       makeSample({ used: 10, reset: bucket.last_reset + 3600 }),
-      'ts1'
+      'ts1',
     );
     expect(result.bucket.windows_crossed).toBe(1);
     bucket = result.bucket;
 
     // Second window change
-    result = updateBucket(
-      bucket,
-      makeSample({ used: 5, reset: bucket.last_reset + 3600 }),
-      'ts2'
-    );
+    result = updateBucket(bucket, makeSample({ used: 5, reset: bucket.last_reset + 3600 }), 'ts2');
     expect(result.bucket.windows_crossed).toBe(2);
   });
 

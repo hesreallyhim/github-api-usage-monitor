@@ -15,10 +15,13 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "npm run build:poller && vitest run --config vitest.integration.config.ts",
     "test:all": "npm run test && npm run test:integration",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
+    "prepare": "husky",
     "prepublishOnly": "npm run build:all"
   },
   "keywords": [
@@ -39,7 +42,10 @@
     "@vercel/ncc": "^0.38.4",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
     "globals": "^17.2.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0",
     "vitest": "^4.0.18"

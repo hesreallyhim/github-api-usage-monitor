@@ -176,21 +176,25 @@ describe('isValidState', () => {
   });
 
   it('returns false for invalid field types', () => {
-    expect(isValidState({
-      buckets: 'not-an-object',
-      started_at_ts: '2026-01-25T12:00:00.000Z',
-      interval_seconds: 30,
-      poll_count: 0,
-      poll_failures: 0,
-    })).toBe(false);
+    expect(
+      isValidState({
+        buckets: 'not-an-object',
+        started_at_ts: '2026-01-25T12:00:00.000Z',
+        interval_seconds: 30,
+        poll_count: 0,
+        poll_failures: 0,
+      }),
+    ).toBe(false);
 
-    expect(isValidState({
-      buckets: {},
-      started_at_ts: 12345, // should be string
-      interval_seconds: 30,
-      poll_count: 0,
-      poll_failures: 0,
-    })).toBe(false);
+    expect(
+      isValidState({
+        buckets: {},
+        started_at_ts: 12345, // should be string
+        interval_seconds: 30,
+        poll_count: 0,
+        poll_failures: 0,
+      }),
+    ).toBe(false);
   });
 
   it('accepts valid state with optional fields', () => {
@@ -204,22 +208,28 @@ describe('isValidState', () => {
 
   it('returns false for invalid optional field types', () => {
     // stopped_at_ts must be string | null
-    expect(isValidState({
-      ...makeState(),
-      stopped_at_ts: 12345,
-    })).toBe(false);
+    expect(
+      isValidState({
+        ...makeState(),
+        stopped_at_ts: 12345,
+      }),
+    ).toBe(false);
 
     // poller_started_at_ts must be string | null
-    expect(isValidState({
-      ...makeState(),
-      poller_started_at_ts: { invalid: 'object' },
-    })).toBe(false);
+    expect(
+      isValidState({
+        ...makeState(),
+        poller_started_at_ts: { invalid: 'object' },
+      }),
+    ).toBe(false);
 
     // last_error must be string | null
-    expect(isValidState({
-      ...makeState(),
-      last_error: ['array', 'not', 'allowed'],
-    })).toBe(false);
+    expect(
+      isValidState({
+        ...makeState(),
+        last_error: ['array', 'not', 'allowed'],
+      }),
+    ).toBe(false);
   });
 
   it('accepts null values for optional fields', () => {

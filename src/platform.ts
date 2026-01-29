@@ -56,7 +56,8 @@ export function isSupported(): PlatformInfo {
       return {
         platform,
         supported: false,
-        reason: 'Windows is not supported in v1. Background process lifecycle differs from POSIX systems.',
+        reason:
+          'Windows is not supported in v1. Background process lifecycle differs from POSIX systems.',
       };
 
     default:

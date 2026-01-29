@@ -51,23 +51,21 @@ export function spawnPoller(token: string): SpawnOutcome {
     // Resolve path to bundled poller entry
     // ncc bundles to dist/poller/index.js
     const actionPath = process.env['GITHUB_ACTION_PATH'];
-    const baseDir = actionPath ? path.resolve(actionPath, 'dist') : path.dirname(process.argv[1] ?? '');
+    const baseDir = actionPath
+      ? path.resolve(actionPath, 'dist')
+      : path.dirname(process.argv[1] ?? '');
     const separator = baseDir.endsWith(path.sep) ? '' : path.sep;
     const pollerEntry = `${baseDir}${separator}poller${path.sep}index.js`;
 
-    const child: ChildProcess = spawn(
-      process.execPath,
-      [pollerEntry],
-      {
-        detached: true,
-        stdio: 'ignore',
-        env: {
-          ...process.env,
-          GITHUB_API_MONITOR_TOKEN: token,
-          GITHUB_API_MONITOR_INTERVAL: String(POLL_INTERVAL_SECONDS),
-        },
-      }
-    );
+    const child: ChildProcess = spawn(process.execPath, [pollerEntry], {
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        GITHUB_API_MONITOR_TOKEN: token,
+        GITHUB_API_MONITOR_INTERVAL: String(POLL_INTERVAL_SECONDS),
+      },
+    });
 
     // Allow parent to exit without waiting
     child.unref();
@@ -251,8 +249,7 @@ async function runPollerLoop(token: string, intervalSeconds: number): Promise<vo
     const elapsedMs = Date.now() - startTimeMs;
     if (elapsedMs >= MAX_LIFETIME_MS) {
       console.error(
-        `Poller exceeded max lifetime (${MAX_LIFETIME_MS}ms). ` +
-        `Exiting as safety measure.`
+        `Poller exceeded max lifetime (${MAX_LIFETIME_MS}ms). ` + `Exiting as safety measure.`,
       );
       state = markStopped(state);
       writeState(state);

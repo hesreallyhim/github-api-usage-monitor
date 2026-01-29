@@ -76,7 +76,7 @@ export interface UpdateResult {
 export function updateBucket(
   bucket: BucketState,
   sample: RateLimitSample,
-  timestamp: string
+  timestamp: string,
 ): UpdateResult {
   const resetChanged = sample.reset !== bucket.last_reset;
   const usedDecreased = sample.used < bucket.last_used;
@@ -201,7 +201,7 @@ export interface ReduceResult {
 export function reduce(
   state: ReducerState,
   response: RateLimitResponse,
-  timestamp: string
+  timestamp: string,
 ): ReduceResult {
   const newBuckets: Record<string, BucketState> = { ...state.buckets };
   const updates: Record<string, UpdateResult> = {};

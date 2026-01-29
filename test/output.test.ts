@@ -5,12 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  render,
-  renderMarkdown,
-  renderConsole,
-  generateWarnings,
-} from '../src/output';
+import { render, renderMarkdown, renderConsole, generateWarnings } from '../src/output';
 import type { ReducerState, SummaryData } from '../src/types';
 
 // -----------------------------------------------------------------------------
@@ -388,7 +383,7 @@ describe('generateWarnings', () => {
     const warnings = generateWarnings(state);
 
     // Should NOT contain a window-crossing warning for an idle bucket
-    const windowWarnings = warnings.filter(w => w.includes('window'));
+    const windowWarnings = warnings.filter((w) => w.includes('window'));
     expect(windowWarnings).toHaveLength(0);
   });
 

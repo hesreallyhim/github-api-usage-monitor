@@ -55,8 +55,8 @@ export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutco
       signal: controller.signal,
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
         'User-Agent': USER_AGENT,
         'X-GitHub-Api-Version': '2022-11-28',
       },
@@ -124,7 +124,7 @@ export function isValidSample(sample: unknown): sample is RateLimitSample {
     return false;
   }
   const requiredFields = ['limit', 'used', 'remaining', 'reset'];
-  return requiredFields.every(field => typeof sample[field] === 'number');
+  return requiredFields.every((field) => typeof sample[field] === 'number');
 }
 
 /**

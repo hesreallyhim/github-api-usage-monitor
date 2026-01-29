@@ -78,7 +78,9 @@ describe('Poller Lifecycle Integration', () => {
 
     // Capture stderr for debugging
     let stderr = '';
-    child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+    child.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
 
     // Wait for poller to signal startup via poller_started_at_ts
     // The poller writes this immediately on startup, before any API calls
@@ -93,7 +95,9 @@ describe('Poller Lifecycle Integration', () => {
     }
 
     // Verify state file has poller_started_at_ts set
-    const stateBefore = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as { poller_started_at_ts: string | null };
+    const stateBefore = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as {
+      poller_started_at_ts: string | null;
+    };
     expect(stateBefore.poller_started_at_ts).toBeTruthy();
 
     // Send SIGTERM for graceful shutdown
@@ -106,19 +110,24 @@ describe('Poller Lifecycle Integration', () => {
     expect(exitCode).toBe(0);
 
     // Verify final state was written (poller_started_at_ts should still be set)
-    const stateAfter = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as { poller_started_at_ts: string | null };
+    const stateAfter = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as {
+      poller_started_at_ts: string | null;
+    };
     expect(stateAfter.poller_started_at_ts).toBeTruthy();
   });
 
   it('process is killable with SIGKILL if SIGTERM fails', async () => {
     // Create a script that ignores SIGTERM (simulates hung process)
     const hungScript = path.join(testStateDir, 'hung-process.js');
-    fs.writeFileSync(hungScript, `
+    fs.writeFileSync(
+      hungScript,
+      `
       process.on('SIGTERM', () => {
         // Intentionally ignore SIGTERM
       });
       setInterval(() => {}, 1000);
-    `);
+    `,
+    );
 
     child = spawn(process.execPath, [hungScript], { detached: true, stdio: 'ignore' });
     if (child.pid) spawnedPids.add(child.pid);
@@ -258,7 +267,9 @@ function waitForPollerStartup(statePath: string, timeoutMs: number): Promise<voi
     const check = (): void => {
       try {
         if (fs.existsSync(statePath)) {
-          const content = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as { poller_started_at_ts: string | null };
+          const content = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as {
+            poller_started_at_ts: string | null;
+          };
           if (content.poller_started_at_ts) {
             resolve();
             return;
