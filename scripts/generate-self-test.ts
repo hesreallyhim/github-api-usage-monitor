@@ -147,7 +147,9 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
   lines.push(`    - uses: actions/checkout@v4`);
   lines.push(``);
   lines.push(`    - name: Start monitor`);
-  lines.push(`      uses: ./`);
+  lines.push(
+    `      uses: hesreallyhim/github-api-usage-monitor@\${{ inputs.action_ref }}`
+  );
   lines.push(`      with:`);
   lines.push(`        token: \${{ secrets.GITHUB_TOKEN }}`);
 
@@ -224,6 +226,10 @@ name: Self-Test
 on:
   workflow_dispatch:
     inputs:
+      action_ref:
+        description: "Git ref to test (branch, tag, or SHA)"
+        type: string
+        default: main
       strict_validation:
         description: "Fail jobs on assertion mismatch"
         type: boolean
