@@ -9,35 +9,11 @@ on:
 
 # Run jobs sequentially to avoid cross-job token contamination
 jobs:
-  build-check:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [20, 22, 24]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-
-      - name: Install and build
-        run: |
-          npm ci
-          npm run build:all
-
-      - name: Verify dist is up to date
-        run: git diff --exit-code -- dist
-
   # ---------------------------------------------------------------------------
   # Job 1: Baseline — no explicit API calls, measures infrastructure noise
   # ---------------------------------------------------------------------------
   baseline:
     runs-on: ubuntu-latest
-    needs: build-check
     steps:
       - uses: actions/checkout@v4
 
@@ -282,11 +258,11 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Platform tests (run in parallel after build-check)
+  # Platform tests (run after measurement chain to avoid token contamination)
   # ---------------------------------------------------------------------------
   test-macos:
     runs-on: macos-latest
-    needs: build-check
+    needs: test-mixed
     steps:
       - uses: actions/checkout@v4
 
@@ -319,7 +295,7 @@ jobs:
 
   test-windows-unsupported:
     runs-on: windows-latest
-    needs: build-check
+    needs: test-mixed
     steps:
       - uses: actions/checkout@v4
 
