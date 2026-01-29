@@ -2,7 +2,7 @@ name: Self-Test
 
 on:
   push:
-    branches: [main, debug]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: GitHub API usage monitor
-        uses: hesreallyhim/github-api-usage-monitor@debug
+        uses: hesreallyhim/github-api-usage-monitor@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: GitHub API usage monitor
-        uses: hesreallyhim/github-api-usage-monitor@debug
+        uses: hesreallyhim/github-api-usage-monitor@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -80,7 +80,7 @@ jobs:
       - name: GitHub API usage monitor (should fail)
         id: start
         continue-on-error: true
-        uses: hesreallyhim/github-api-usage-monitor@debug
+        uses: hesreallyhim/github-api-usage-monitor@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
