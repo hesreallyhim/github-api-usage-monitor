@@ -95,10 +95,20 @@ Workflow Step: stop (always)
 
 ---
 
+## Self-Test Integration Suite
+
+A declarative generator produces `.github/workflows/self-test.yml` from scenario definitions in `scripts/scenarios.ts`. The generator (`scripts/generate-self-test.ts`) stamps out 12 jobs covering core, search, code_search, and graphql buckets with patterns including burst, idle, window crossing, mixed, and sequential calls. Regenerate with `npx tsx scripts/generate-self-test.ts`.
+
+Validation is toggleable via `strict_validation` input (default off) — assertions check `state.json` against expected deltas but are noisy due to cross-workflow rate-limit pool sharing.
+
+**Known limitation:** All jobs in a repo share the same `GITHUB_TOKEN` rate-limit pool, so concurrent workflows can inject noise into `core` bucket measurements. A dedicated test repo or reserved token would improve isolation.
+
+See `docs/planning/IMPL-PLAN-declarative-self-test.md` for full design.
+
 ## Next Steps
 
-1. **Integration test locally** — Run self-test workflow on a real GitHub runner
-2. **Verify poller lifecycle** — Confirm detached process survives step boundaries
+1. **Verify self-test workflow** — Run via workflow_dispatch on GitHub and confirm all 12 scenarios produce expected state.json output
+2. **Consider test isolation** — Dedicated repo or reserved token to avoid cross-workflow rate-limit noise
 3. **Test edge cases**:
    - Token with no permissions
    - Very short job (< 30s)
