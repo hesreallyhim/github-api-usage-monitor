@@ -78,7 +78,41 @@ Each API response includes this header confirming which bucket was charged.
 
 ---
 
-## 4. Implications for Self-Test Design
+## 4. Bucket Testability (for self-test scenarios)
+
+Which buckets can we safely query with GET/simple requests in a self-test?
+
+### Directly testable (GET or simple POST)
+
+| Bucket | Method | Test endpoint | Notes |
+|--------|--------|---------------|-------|
+| `core` | GET | `/repos/{owner}/{repo}` | Main workhorse; also touched by checkout |
+| `search` | GET | `/search/repositories?q=test` | 60-sec window; use cautiously (2 calls, not 5) |
+| `code_search` | GET | `/search/code?q=test+repo:o/r` | 60-sec window, 10/min limit; use cautiously |
+| `graphql` | POST | `/graphql` with `{ viewer { login } }` | POST but read-only query; safe |
+
+### Not directly testable (POST-only or impractical)
+
+| Bucket | Why excluded |
+|--------|-------------|
+| `code_scanning_upload` | Mirrors `core` exactly; POST-only SARIF upload |
+| `integration_manifest` | POST-only (`POST /app-manifests/{code}/conversions`) |
+| `dependency_snapshots` | POST-only (dependency graph submission) |
+| `code_scanning_autofix` | POST creates autofix suggestions; side effects |
+| `source_import` | Deprecated (removed Apr 2024); has GET but impractical |
+| `dependency_sbom` | Would need to check; likely GET but low value |
+| `actions_runner_registration` | POST-only for registration tokens; GET exists but for listing runners |
+| `scim` | Enterprise SCIM provisioning; GET exists but requires enterprise org |
+| `audit_log` | Enterprise audit log; GET exists but requires enterprise org |
+| `audit_log_streaming` | Enterprise streaming config; requires enterprise org |
+
+### Observed but not queried
+
+All 14 buckets appear in every `/rate_limit` response. The self-test should **track and summarize all buckets** even though we only directly query a subset (core, search, code_search, graphql). Non-queried buckets serve as a control group: they should show `total_used = 0` with no window crossings.
+
+---
+
+## 5. Implications for Self-Test Design
 
 | Dimension | Determinism | Why |
 |-----------|-------------|-----|
@@ -87,6 +121,21 @@ Each API response includes this header confirming which bucket was charged.
 | **Remaining** | Non-deterministic | Depends on whether other jobs or prior workflow runs consumed quota in the same window |
 
 All calculations and reporting should strictly be based on rate-limit response headers. Secondary rate-limit data is not available or relevant.
+
+### Cross-workflow noise
+
+Determinism is always slightly imperfect because `GITHUB_TOKEN` rate limits are repo-wide. Other concurrent workflows (CI, dependabot, etc.) can consume quota from the same pool, affecting `core` and potentially other buckets. This means:
+
+- `total_used` may include calls from other workflows (especially `core`)
+- Use `total_used >= N` assertions rather than `total_used == N` for `core`
+- For `search`, `code_search`, and `graphql`, cross-workflow noise is less likely but not impossible
+
+### Workflow constraints for self-test
+
+- **Trigger**: `workflow_dispatch` only (not push-based) to avoid accidental runs
+- **Concurrency**: Use `cancel-in-progress` concurrency group to prevent parallel runs from contaminating each other's rate-limit observations
+- **Runner**: Single runner type (`ubuntu-latest`) to keep it simple
+- **60-sec bucket caution**: Use small call counts (e.g. 2 per bucket) to avoid hitting limits or secondary rate-limit triggers
 
 ---
 
