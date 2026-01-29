@@ -83,6 +83,7 @@ Four separate ncc bundles, each from a different entry point:
 - Helper factories (`makeSample`, `makeBucket`, `makeState`) in test files for readable setup
 - Integration tests have 30s timeout and 1 retry (process lifecycle tests are flaky)
 - Fixtures in `test/fixtures/` — real API response shapes
+- **Workflows that reference actions that are defined in-repo will not perform the "pre" hook if you use the local path (e.g. `./`) - when testing this very action in a workflow inside this repo you must refer to it via an "external" link such as hesreallyhim/github-api-usage-monitor@main.**
 
 ## Self-test workflow (declarative generator)
 
