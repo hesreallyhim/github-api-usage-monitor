@@ -78,8 +78,8 @@ async function fetchRateLimit(token) {
             signal: controller.signal,
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/vnd.github+json',
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.github+json',
                 'User-Agent': USER_AGENT,
                 'X-GitHub-Api-Version': '2022-11-28',
             },
@@ -138,7 +138,7 @@ function isValidSample(sample) {
         return false;
     }
     const requiredFields = ['limit', 'used', 'remaining', 'reset'];
-    return requiredFields.every(field => typeof sample[field] === 'number');
+    return requiredFields.every((field) => typeof sample[field] === 'number');
 }
 /**
  * Parses raw API response into typed RateLimitResponse.
@@ -681,7 +681,9 @@ function spawnPoller(token) {
         // Resolve path to bundled poller entry
         // ncc bundles to dist/poller/index.js
         const actionPath = process.env['GITHUB_ACTION_PATH'];
-        const baseDir = actionPath ? path.resolve(actionPath, 'dist') : path.dirname(process.argv[1] ?? '');
+        const baseDir = actionPath
+            ? path.resolve(actionPath, 'dist')
+            : path.dirname(process.argv[1] ?? '');
         const separator = baseDir.endsWith(path.sep) ? '' : path.sep;
         const pollerEntry = `${baseDir}${separator}poller${path.sep}index.js`;
         const child = spawn(process.execPath, [pollerEntry], {
@@ -841,8 +843,7 @@ async function runPollerLoop(token, intervalSeconds) {
         // Defense-in-depth: exit if max lifetime exceeded
         const elapsedMs = Date.now() - startTimeMs;
         if (elapsedMs >= MAX_LIFETIME_MS) {
-            console.error(`Poller exceeded max lifetime (${MAX_LIFETIME_MS}ms). ` +
-                `Exiting as safety measure.`);
+            console.error(`Poller exceeded max lifetime (${MAX_LIFETIME_MS}ms). ` + `Exiting as safety measure.`);
             state = markStopped(state);
             writeState(state);
             process.exit(0);
