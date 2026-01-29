@@ -20,6 +20,7 @@
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
     "typecheck": "tsc --noEmit",
+    "generate:self-test": "tsx scripts/generate-self-test.ts",
     "clean": "rm -rf dist",
     "prepare": "husky",
     "prepublishOnly": "npm run build:all"
