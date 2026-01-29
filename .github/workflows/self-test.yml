@@ -76,8 +76,12 @@ jobs:
       - name: Make 5 core API calls
         run: |
           for i in {1..5}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}" > /dev/null
+            echo "--- core call $i ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+              -D - \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}" \
+              2>&1 | grep -iE '(^HTTP|x-ratelimit-used|x-ratelimit-remaining|x-ratelimit-reset|x-ratelimit-limit|x-ratelimit-resource)'
             sleep 2
           done
 
@@ -111,8 +115,12 @@ jobs:
       - name: Make 10 core API calls
         run: |
           for i in {1..10}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}" > /dev/null
+            echo "--- core call $i ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+              -D - \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}" \
+              2>&1 | grep -iE '(^HTTP|x-ratelimit-used|x-ratelimit-remaining|x-ratelimit-reset|x-ratelimit-limit|x-ratelimit-resource)'
             sleep 1
           done
 
@@ -146,8 +154,12 @@ jobs:
       - name: Make 3 search API calls
         run: |
           for i in {1..3}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/search/repositories?q=test" > /dev/null
+            echo "--- search call $i ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+              -D - \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/search/repositories?q=test" \
+              2>&1 | grep -iE '(^HTTP|x-ratelimit-used|x-ratelimit-remaining|x-ratelimit-reset|x-ratelimit-limit|x-ratelimit-resource)'
             sleep 5
           done
 
@@ -181,10 +193,14 @@ jobs:
       - name: Make 2 GraphQL API calls
         run: |
           for i in {1..2}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            echo "--- graphql call $i ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+              -D - \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               -H "Content-Type: application/json" \
               -d '{"query":"{ viewer { login } }"}' \
-              "https://api.github.com/graphql" > /dev/null
+              "https://api.github.com/graphql" \
+              2>&1 | grep -iE '(^HTTP|x-ratelimit-used|x-ratelimit-remaining|x-ratelimit-reset|x-ratelimit-limit|x-ratelimit-resource)'
             sleep 5
           done
 
@@ -219,24 +235,36 @@ jobs:
         run: |
           # Core calls
           for i in {1..5}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}" > /dev/null
+            echo "--- core call $i ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+              -D - \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}" \
+              2>&1 | grep -iE '(^HTTP|x-ratelimit-used|x-ratelimit-remaining|x-ratelimit-reset|x-ratelimit-limit|x-ratelimit-resource)'
             sleep 1
           done
 
           # Search calls
           for i in {1..3}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/search/repositories?q=test" > /dev/null
+            echo "--- search call $i ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+              -D - \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/search/repositories?q=test" \
+              2>&1 | grep -iE '(^HTTP|x-ratelimit-used|x-ratelimit-remaining|x-ratelimit-reset|x-ratelimit-limit|x-ratelimit-resource)'
             sleep 2
           done
 
           # GraphQL calls
           for i in {1..2}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            echo "--- graphql call $i ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+              -D - \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               -H "Content-Type: application/json" \
               -d '{"query":"{ viewer { login } }"}' \
-              "https://api.github.com/graphql" > /dev/null
+              "https://api.github.com/graphql" \
+              2>&1 | grep -iE '(^HTTP|x-ratelimit-used|x-ratelimit-remaining|x-ratelimit-reset|x-ratelimit-limit|x-ratelimit-resource)'
             sleep 2
           done
 
@@ -254,7 +282,7 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Platform tests (run in parallel after mixed)
+  # Platform tests (run in parallel after build-check)
   # ---------------------------------------------------------------------------
   test-macos:
     runs-on: macos-latest
@@ -270,8 +298,12 @@ jobs:
       - name: Simulate API usage
         run: |
           for i in {1..5}; do
-            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}" > /dev/null
+            echo "--- core call $i ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+              -D - \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}" \
+              2>&1 | grep -iE '(^HTTP|x-ratelimit-used|x-ratelimit-remaining|x-ratelimit-reset|x-ratelimit-limit|x-ratelimit-resource)'
             sleep 2
           done
 
