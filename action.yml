@@ -16,6 +16,7 @@ outputs: {}
 
 runs:
   using: node20
+  pre: dist/pre.js
   main: dist/main.js
   post: dist/post.js
   post-if: always()

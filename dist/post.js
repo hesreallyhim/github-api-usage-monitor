@@ -28483,6 +28483,128 @@ function reducer_markStopped(state) {
     };
 }
 
+;// CONCATENATED MODULE: ./src/github.ts
+/**
+ * GitHub API Client
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - github.fetchRateLimit
+ *
+ * Fetches rate limit data from the GitHub API.
+ */
+
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+const RATE_LIMIT_URL = 'https://api.github.com/rate_limit';
+const USER_AGENT = 'github-api-usage-monitor/1.0';
+/**
+ * Fetches rate limit data from GitHub API.
+ *
+ * @param token - GitHub token for authentication
+ * @returns Rate limit response or error
+ */
+async function github_fetchRateLimit(token) {
+    const timestamp = new Date().toISOString();
+    // Set up abort controller with timeout to prevent indefinite hangs
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+        const response = await fetch(RATE_LIMIT_URL, {
+            signal: controller.signal,
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': USER_AGENT,
+                'X-GitHub-Api-Version': '2022-11-28',
+            },
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            const statusText = response.statusText || 'Unknown error';
+            return {
+                success: false,
+                error: `HTTP ${response.status}: ${statusText}`,
+                timestamp,
+            };
+        }
+        const raw = await response.json();
+        const parsed = parseRateLimitResponse(raw);
+        if (!parsed) {
+            return {
+                success: false,
+                error: 'Failed to parse rate limit response',
+                timestamp,
+            };
+        }
+        return {
+            success: true,
+            data: parsed,
+            timestamp,
+        };
+    }
+    catch (err) {
+        clearTimeout(timeoutId);
+        const error = err;
+        // Handle abort error specifically (timeout)
+        if (error.name === 'AbortError') {
+            return {
+                success: false,
+                error: `Request timeout: GitHub API did not respond within ${FETCH_TIMEOUT_MS}ms`,
+                timestamp,
+            };
+        }
+        return {
+            success: false,
+            error: `Network error: ${error.message}`,
+            timestamp,
+        };
+    }
+}
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+/**
+ * Validates that a sample has the expected shape.
+ * Used for defensive parsing.
+ */
+function isValidSample(sample) {
+    if (!isARealObject(sample)) {
+        return false;
+    }
+    const requiredFields = ['limit', 'used', 'remaining', 'reset'];
+    return requiredFields.every(field => typeof sample[field] === 'number');
+}
+/**
+ * Parses raw API response into typed RateLimitResponse.
+ * Returns null if parsing fails.
+ */
+function parseRateLimitResponse(raw) {
+    if (!isARealObject(raw) || !isARealObject(raw['resources'])) {
+        return null;
+    }
+    const resources = {};
+    for (const [key, value] of Object.entries(raw['resources'])) {
+        if (!isValidSample(value)) {
+            return null;
+        }
+        resources[key] = value;
+    }
+    // Use rate if valid, otherwise fall back to resources.core
+    const rawRate = raw['rate'];
+    if (isValidSample(rawRate)) {
+        return { resources, rate: rawRate };
+    }
+    const coreResource = resources['core'];
+    if (coreResource) {
+        return { resources, rate: coreResource };
+    }
+    return null;
+}
+
 ;// CONCATENATED MODULE: ./src/output.ts
 /**
  * Output Renderer
@@ -28665,6 +28787,7 @@ function generateWarnings(state) {
 
 
 
+
 // -----------------------------------------------------------------------------
 // Post entry point
 // -----------------------------------------------------------------------------
@@ -28683,6 +28806,10 @@ async function run() {
 async function handlePost() {
     core.info('Stopping GitHub API usage monitor...');
     const warnings = [];
+    const token = core.getInput('token') || process.env['GITHUB_TOKEN'];
+    if (token) {
+        core.setSecret(token);
+    }
     // Check platform (warn but continue)
     const platformInfo = isSupported();
     if (!platformInfo.supported) {
@@ -28717,8 +28844,24 @@ async function handlePost() {
         }
         throw new Error(`Failed to read state: ${stateResult.error}`);
     }
+    // Optional final poll to capture last usage before shutdown
+    let finalState = stateResult.state;
+    if (token) {
+        core.info('Performing final API poll...');
+        const finalPoll = await github_fetchRateLimit(token);
+        if (finalPoll.success) {
+            const reduceResult = reducer_reduce(finalState, finalPoll.data, finalPoll.timestamp);
+            finalState = reduceResult.state;
+        }
+        else {
+            warnings.push(`Final poll failed: ${finalPoll.error}`);
+        }
+    }
+    else {
+        warnings.push('No token available for final poll');
+    }
     // Mark as stopped
-    const finalState = reducer_markStopped(stateResult.state);
+    finalState = reducer_markStopped(finalState);
     state_writeState(finalState);
     // Calculate duration
     const startTime = new Date(finalState.started_at_ts).getTime();

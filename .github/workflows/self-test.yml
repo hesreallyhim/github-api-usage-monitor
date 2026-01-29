@@ -37,8 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start API usage monitor
-        uses: ./
+      - name: GitHub API usage monitor
+        uses: ${{ github.repository }}@${{ github.sha }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,12 +50,6 @@ jobs:
               https://api.github.com/repos/${{ github.repository }} > /dev/null
             sleep 2
           done
-
-      - name: Stop API usage monitor
-        if: always()
-        uses: ./
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
   test-macos:
     runs-on: macos-latest
@@ -63,8 +57,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start API usage monitor
-        uses: ./
+      - name: GitHub API usage monitor
+        uses: ${{ github.repository }}@${{ github.sha }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -77,22 +71,16 @@ jobs:
             sleep 2
           done
 
-      - name: Stop API usage monitor
-        if: always()
-        uses: ./
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   test-windows-unsupported:
     runs-on: windows-latest
     needs: build-check
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start API usage monitor (should fail)
+      - name: GitHub API usage monitor (should fail)
         id: start
         continue-on-error: true
-        uses: ./
+        uses: ${{ github.repository }}@${{ github.sha }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 

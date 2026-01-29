@@ -16,7 +16,8 @@ import type { SummaryData } from './types';
 import { isSupported } from './platform';
 import { killPollerWithVerification } from './poller';
 import { readState, writeState, readPid, removePid } from './state';
-import { markStopped } from './reducer';
+import { markStopped, reduce } from './reducer';
+import { fetchRateLimit } from './github';
 import { render, writeStepSummary, generateWarnings } from './output';
 
 // -----------------------------------------------------------------------------
@@ -40,6 +41,10 @@ async function handlePost(): Promise<void> {
   core.info('Stopping GitHub API usage monitor...');
 
   const warnings: string[] = [];
+  const token = core.getInput('token') || process.env['GITHUB_TOKEN'];
+  if (token) {
+    core.setSecret(token);
+  }
 
   // Check platform (warn but continue)
   const platformInfo = isSupported();
@@ -75,8 +80,23 @@ async function handlePost(): Promise<void> {
     throw new Error(`Failed to read state: ${stateResult.error}`);
   }
 
+  // Optional final poll to capture last usage before shutdown
+  let finalState = stateResult.state;
+  if (token) {
+    core.info('Performing final API poll...');
+    const finalPoll = await fetchRateLimit(token);
+    if (finalPoll.success) {
+      const reduceResult = reduce(finalState, finalPoll.data, finalPoll.timestamp);
+      finalState = reduceResult.state;
+    } else {
+      warnings.push(`Final poll failed: ${finalPoll.error}`);
+    }
+  } else {
+    warnings.push('No token available for final poll');
+  }
+
   // Mark as stopped
-  const finalState = markStopped(stateResult.state);
+  finalState = markStopped(finalState);
   writeState(finalState);
 
   // Calculate duration

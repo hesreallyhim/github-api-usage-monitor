@@ -2,12 +2,9 @@
  * Main Entry
  * Layer: action
  *
- * GitHub Action main entry point. Spawns the background poller.
- * Cleanup and reporting is handled by post.ts (via action.yml post entry).
+ * GitHub Action main entry point.
  *
- * Required ports:
- *   - poller.spawn
- *   - state.write
- *   - github.fetchRateLimit
+ * Note: startup is handled by the pre hook (pre.ts). This entry is intentionally
+ * a no-op so the action can be placed anywhere in the job without double-start.
  */
 export {};
