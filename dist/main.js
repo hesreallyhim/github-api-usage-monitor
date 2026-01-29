@@ -27720,7 +27720,7 @@ var __webpack_exports__ = {};
 // -----------------------------------------------------------------------------
 // Action entry point
 // -----------------------------------------------------------------------------
-async function run() {
+function run() {
     _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Monitor start is handled by the pre hook. Main step is a no-op.');
 }
 // -----------------------------------------------------------------------------
