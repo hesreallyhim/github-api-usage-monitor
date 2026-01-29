@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeSleepPlan } from '../src/poller';
+import { computeSleepPlan, applyDebounce, POLL_DEBOUNCE_MS } from '../src/poller';
+import type { SleepPlan } from '../src/poller';
 import type { ReducerState, BucketState } from '../src/types';
 import { POLL_INTERVAL_SECONDS } from '../src/types';
 
@@ -201,5 +202,52 @@ describe('computeSleepPlan', () => {
     // targetSleep = (10-3)*1000 = 7000
     expect(plan.sleepMs).toBe(7000);
     expect(plan.burst).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// applyDebounce
+// -----------------------------------------------------------------------------
+
+describe('applyDebounce', () => {
+  it('clamps sleepMs up to debounce floor', () => {
+    const plan: SleepPlan = { sleepMs: 1000, burst: false, burstGapMs: 0 };
+    const result = applyDebounce(plan, 5000);
+
+    expect(result.sleepMs).toBe(5000);
+  });
+
+  it('does not reduce sleepMs already above the floor', () => {
+    const plan: SleepPlan = { sleepMs: 30000, burst: false, burstGapMs: 0 };
+    const result = applyDebounce(plan, 5000);
+
+    expect(result.sleepMs).toBe(30000);
+  });
+
+  it('clamps burstGapMs when in burst mode', () => {
+    const plan: SleepPlan = { sleepMs: 1000, burst: true, burstGapMs: 3000 };
+    const result = applyDebounce(plan, 5000);
+
+    expect(result.sleepMs).toBe(5000);
+    expect(result.burstGapMs).toBe(5000);
+    expect(result.burst).toBe(true);
+  });
+
+  it('leaves burstGapMs untouched when not in burst mode', () => {
+    const plan: SleepPlan = { sleepMs: 1000, burst: false, burstGapMs: 0 };
+    const result = applyDebounce(plan, 5000);
+
+    expect(result.burstGapMs).toBe(0);
+  });
+
+  it('does not reduce burstGapMs already above the floor', () => {
+    const plan: SleepPlan = { sleepMs: 5000, burst: true, burstGapMs: 6000 };
+    const result = applyDebounce(plan, 5000);
+
+    expect(result.burstGapMs).toBe(6000);
+  });
+
+  it('POLL_DEBOUNCE_MS is exported and positive', () => {
+    expect(POLL_DEBOUNCE_MS).toBeGreaterThan(0);
   });
 });

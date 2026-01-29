@@ -31337,6 +31337,32 @@ function computeSleepPlan(state, baseIntervalMs, nowEpochSeconds) {
     return { sleepMs: baseIntervalMs, burst: false, burstGapMs: 0 };
 }
 // -----------------------------------------------------------------------------
+// Poll debounce
+// -----------------------------------------------------------------------------
+/**
+ * Minimum milliseconds between any two polls.
+ *
+ * Prevents rapid-fire polling when multiple buckets have staggered resets
+ * close together (e.g. three 60s buckets resetting 5s apart). Without this,
+ * each reset triggers its own burst, producing 6 polls in ~15s. The debounce
+ * floors every sleep so back-to-back bursts collapse naturally.
+ *
+ * Tunable independently from computeSleepPlan's reset-targeting logic.
+ */
+const POLL_DEBOUNCE_MS = 5000;
+/**
+ * Applies a minimum-interval debounce to a sleep plan.
+ * Clamps both the initial sleep and the burst gap (if any) so that no
+ * two polls can occur closer than `debounceMs` apart.
+ */
+function applyDebounce(plan, debounceMs) {
+    return {
+        ...plan,
+        sleepMs: Math.max(plan.sleepMs, debounceMs),
+        burstGapMs: plan.burst ? Math.max(plan.burstGapMs, debounceMs) : plan.burstGapMs,
+    };
+}
+// -----------------------------------------------------------------------------
 // Poller main loop (when run as child process)
 // -----------------------------------------------------------------------------
 /**
@@ -31388,7 +31414,8 @@ async function runPollerLoop(token, intervalSeconds) {
             writeState(state);
             process.exit(0);
         }
-        const plan = computeSleepPlan(state, intervalSeconds * 1000, Math.floor(Date.now() / 1000));
+        const rawPlan = computeSleepPlan(state, intervalSeconds * 1000, Math.floor(Date.now() / 1000));
+        const plan = applyDebounce(rawPlan, POLL_DEBOUNCE_MS);
         await poller_sleep(plan.sleepMs);
         state = await performPoll(state, token);
         if (plan.burst) {
