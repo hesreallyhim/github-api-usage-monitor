@@ -16,7 +16,10 @@ sequenceDiagram
     Start->>State: Write initial state
     Start-->>WF: Success (PID saved)
 
-    loop Every 30 seconds
+    loop Adaptive interval (base 30s, targets resets)
+        Poller->>Poller: computeSleepPlan(state, baseInterval, now)
+        Poller->>Poller: applyDebounce(plan, 5s floor)
+        Note over Poller: Sleep: normal (30s), pre-reset (~3s before), or burst
         Poller->>GH: GET /rate_limit
         alt Success
             GH-->>Poller: Rate limit data
@@ -25,6 +28,13 @@ sequenceDiagram
         else Failure
             Poller->>Poller: Increment poll_failures
             Note over Poller: Continue (no retry)
+        end
+        opt Burst mode (reset <= 8s away)
+            Note over Poller: Sleep burst gap (>= 5s debounce)
+            Poller->>GH: GET /rate_limit (post-reset capture)
+            GH-->>Poller: Rate limit data
+            Poller->>Poller: Reduce per-bucket deltas
+            Poller->>State: Atomic write state
         end
     end
 

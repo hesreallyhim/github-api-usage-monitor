@@ -71,11 +71,14 @@ Workflow Step: stop (always)
 
 ## Key Design Decisions
 
-1. **30s polling interval** — avoids missing 60s reset windows
-2. **Fail-fast on start** — initial poll validates token before spawning poller
-3. **Include post-reset `used`** — minimizes undercount at window boundaries
-4. **Anomaly detection** — `used` decreasing without reset = warn, don't subtract
-5. **ncc bundling** — `dist/main.js` + `dist/poller/index.js` as separate bundles
+1. **30s base polling interval** — avoids missing 60s reset windows
+2. **Adaptive polling with pre-reset targeting** — instead of fixed 30s sleeps, the poller schedules polls to land ~3s before bucket resets, reducing the uncertainty window from ~50% to ~5% of a 60s bucket. Enters "burst mode" near resets: two polls bracket the reset boundary to capture both pre-reset and post-reset state. See [ADR-002](docs/planning/ADR-002-adaptive-polling.md).
+3. **Poll debounce (5s floor)** — prevents rapid-fire polling when multiple short-window buckets have staggered resets. Applied as a separate layer after the adaptive sleep plan. Each post-reset poll already captures pre-reset state for nearby buckets, so back-to-back bursts are wasteful and naturally collapse under the debounce.
+4. **Optimization ceiling acknowledged** — the ~3-5s residual uncertainty is fundamental: polling a REST endpoint can't do better without a push-based data source or intercepting outbound API calls. Further poll-scheduling refinement would yield negligible returns.
+5. **Fail-fast on start** — initial poll validates token before spawning poller
+6. **Include post-reset `used`** — minimizes undercount at window boundaries
+7. **Anomaly detection** — `used` decreasing without reset = warn, don't subtract
+8. **ncc bundling** — `dist/main.js` + `dist/poller/index.js` as separate bundles
 
 ---
 
