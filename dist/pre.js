@@ -31189,6 +31189,28 @@ function poll_log_appendPollLogEntry(entry) {
         // Diagnostic-only — never disrupt the poller
     }
 }
+// -----------------------------------------------------------------------------
+// Port: pollLog.read
+// -----------------------------------------------------------------------------
+/**
+ * Reads all poll log entries from the JSONL file.
+ * Returns an empty array if the file does not exist or is unreadable.
+ */
+function readPollLog() {
+    try {
+        const path = getPollLogPath();
+        if (!fs.existsSync(path))
+            return [];
+        const content = fs.readFileSync(path, 'utf-8');
+        return content
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+    }
+    catch {
+        return [];
+    }
+}
 
 ;// CONCATENATED MODULE: ./src/poller.ts
 /**

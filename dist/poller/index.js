@@ -446,7 +446,7 @@ function paths_getPidPath() {
 /**
  * Returns the absolute path to poll-log.jsonl
  */
-function getPollLogPath() {
+function paths_getPollLogPath() {
     return external_path_namespaceObject.join(paths_getStateDir(), POLL_LOG_FILE_NAME);
 }
 // -----------------------------------------------------------------------------
@@ -698,10 +698,32 @@ function sleep(ms) {
 function appendPollLogEntry(entry) {
     try {
         const line = JSON.stringify(entry) + '\n';
-        external_fs_namespaceObject.appendFileSync(getPollLogPath(), line, 'utf-8');
+        external_fs_namespaceObject.appendFileSync(paths_getPollLogPath(), line, 'utf-8');
     }
     catch {
         // Diagnostic-only — never disrupt the poller
+    }
+}
+// -----------------------------------------------------------------------------
+// Port: pollLog.read
+// -----------------------------------------------------------------------------
+/**
+ * Reads all poll log entries from the JSONL file.
+ * Returns an empty array if the file does not exist or is unreadable.
+ */
+function readPollLog() {
+    try {
+        const path = getPollLogPath();
+        if (!fs.existsSync(path))
+            return [];
+        const content = fs.readFileSync(path, 'utf-8');
+        return content
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+    }
+    catch {
+        return [];
     }
 }
 

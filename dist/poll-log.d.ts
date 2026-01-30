@@ -19,3 +19,8 @@ import type { PollLogEntry } from './types';
  * by diagnostic logging failures.
  */
 export declare function appendPollLogEntry(entry: PollLogEntry): void;
+/**
+ * Reads all poll log entries from the JSONL file.
+ * Returns an empty array if the file does not exist or is unreadable.
+ */
+export declare function readPollLog(): PollLogEntry[];

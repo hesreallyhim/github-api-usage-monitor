@@ -34,3 +34,25 @@ export function appendPollLogEntry(entry: PollLogEntry): void {
     // Diagnostic-only — never disrupt the poller
   }
 }
+
+// -----------------------------------------------------------------------------
+// Port: pollLog.read
+// -----------------------------------------------------------------------------
+
+/**
+ * Reads all poll log entries from the JSONL file.
+ * Returns an empty array if the file does not exist or is unreadable.
+ */
+export function readPollLog(): PollLogEntry[] {
+  try {
+    const path = getPollLogPath();
+    if (!fs.existsSync(path)) return [];
+    const content = fs.readFileSync(path, 'utf-8');
+    return content
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as PollLogEntry);
+  } catch {
+    return [];
+  }
+}

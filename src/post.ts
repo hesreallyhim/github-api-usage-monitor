@@ -18,7 +18,8 @@ import { killPollerWithVerification } from './poller';
 import { readState, writeState, readPid, removePid } from './state';
 import { markStopped, reduce } from './reducer';
 import { fetchRateLimit } from './github';
-import { render, writeStepSummary, generateWarnings } from './output';
+import { render, renderDiagnostics, writeStepSummary, generateWarnings } from './output';
+import { readPollLog } from './poll-log';
 
 // -----------------------------------------------------------------------------
 // Post entry point
@@ -135,6 +136,11 @@ async function handlePost(): Promise<void> {
   // Output
   core.info(consoleText);
   writeStepSummary(markdown);
+
+  // Append detailed diagnostic <details> block (poll timeline, bucket summary, etc.)
+  const pollLog = readPollLog();
+  const diagnosticsMarkdown = renderDiagnostics(finalState, pollLog);
+  writeStepSummary(diagnosticsMarkdown);
 
   core.info('Monitor stopped');
 }
