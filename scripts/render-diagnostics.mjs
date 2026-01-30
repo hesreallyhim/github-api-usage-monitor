@@ -2,11 +2,14 @@
  * render-diagnostics.mjs
  *
  * Standalone vanilla JS diagnostic renderer for self-test scenarios.
- * Reads state.json and poll-log.jsonl from $STATE_DIR, outputs a
- * <details><summary> markdown block to stdout for appending to
- * $GITHUB_STEP_SUMMARY.
+ * Reads state/poll data from either:
+ *   - STATE_JSON + POLL_LOG_JSON (preferred for workflows), or
+ *   - state.json + poll-log.jsonl from $STATE_DIR (fallback)
+ * Then outputs a <details><summary> markdown block to stdout for appending
+ * to $GITHUB_STEP_SUMMARY.
  *
  * Usage:
+ *   STATE_JSON='{}' POLL_LOG_JSON='[]' SCENARIO_NAME="core-5" node scripts/render-diagnostics.mjs
  *   STATE_DIR=/path/to/dir SCENARIO_NAME="core-5" node scripts/render-diagnostics.mjs
  *
  * No dependencies — uses only node:fs and node:path.
@@ -19,33 +22,62 @@ import { join } from 'node:path';
 // Config from environment
 // ---------------------------------------------------------------------------
 
-const stateDir = process.env.STATE_DIR;
 const scenarioName = process.env.SCENARIO_NAME || 'unknown';
-
-if (!stateDir) {
-  console.error('STATE_DIR environment variable is required');
-  process.exit(1);
-}
-
-const statePath = join(stateDir, 'state.json');
-const pollLogPath = join(stateDir, 'poll-log.jsonl');
+const stateJsonEnv = process.env.STATE_JSON || '';
+const pollLogJsonEnv = process.env.POLL_LOG_JSON || '';
+const stateDir = process.env.STATE_DIR || '';
 
 // ---------------------------------------------------------------------------
 // Read inputs
 // ---------------------------------------------------------------------------
 
-if (!existsSync(statePath)) {
-  // No state file — nothing to render (graceful degradation)
+let state = null;
+const hasStateJson = stateJsonEnv.trim().length > 0;
+const hasStateDir = stateDir.trim().length > 0;
+
+if (!hasStateJson && !hasStateDir) {
+  console.error('No STATE_JSON or STATE_DIR provided; skipping diagnostics.');
   process.exit(0);
 }
 
-const state = JSON.parse(readFileSync(statePath, 'utf-8'));
+if (hasStateJson) {
+  try {
+    state = JSON.parse(stateJsonEnv);
+  } catch (error) {
+    console.error('STATE_JSON is not valid JSON; skipping diagnostics.');
+    process.exit(0);
+  }
+} else if (hasStateDir) {
+  const statePath = join(stateDir, 'state.json');
+  if (!existsSync(statePath)) {
+    // No state file — nothing to render (graceful degradation)
+    process.exit(0);
+  }
+  try {
+    state = JSON.parse(readFileSync(statePath, 'utf-8'));
+  } catch (error) {
+    console.error('state.json is not valid JSON; skipping diagnostics.');
+    process.exit(0);
+  }
+}
 
 /** @type {Array<{timestamp: string, poll_number: number, buckets: Record<string, {used: number, remaining: number, reset: number, limit: number, delta: number, window_crossed: boolean, anomaly: boolean}>}>} */
 let pollLog = [];
-if (existsSync(pollLogPath)) {
-  const lines = readFileSync(pollLogPath, 'utf-8').split('\n').filter(Boolean);
-  pollLog = lines.map((line) => JSON.parse(line));
+const hasPollLogJson = pollLogJsonEnv.trim().length > 0;
+if (hasPollLogJson) {
+  try {
+    const parsed = JSON.parse(pollLogJsonEnv);
+    pollLog = Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('POLL_LOG_JSON is not valid JSON; continuing without poll log.');
+    pollLog = [];
+  }
+} else if (hasStateDir) {
+  const pollLogPath = join(stateDir, 'poll-log.jsonl');
+  if (existsSync(pollLogPath)) {
+    const lines = readFileSync(pollLogPath, 'utf-8').split('\n').filter(Boolean);
+    pollLog = lines.map((line) => JSON.parse(line));
+  }
 }
 
 // ---------------------------------------------------------------------------

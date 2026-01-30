@@ -223,20 +223,6 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
   );
   lines.push(`      run: sleep ${remainingSleep}`);
 
-  // Dump state.json step
-  lines.push(``);
-  lines.push(`    - name: Dump state.json`);
-  lines.push(`      run: |`);
-  lines.push(
-    `        STATE_FILE="\${RUNNER_TEMP}/github-api-usage-monitor/state.json"`
-  );
-  lines.push(`        echo "=== ${scenario.id}: state.json ==="`);
-  lines.push(`        if [ -f "$STATE_FILE" ]; then`);
-  lines.push(`          cat "$STATE_FILE" | python3 -m json.tool`);
-  lines.push(`        else`);
-  lines.push(`          echo "state.json not found"`);
-  lines.push(`        fi`);
-
   // Validation step — intentionally has NO `if: always()` condition.
   // We only want validation to run when the scenario completes successfully.
   // If a prior step fails (e.g. the poller crashes), this step is skipped by
@@ -282,16 +268,9 @@ function generateDiagnosticsJob(scenario: Scenario): string {
   lines.push(`        POLL_LOG_JSON: \${{ needs.${scenario.id}.outputs.poll_log_json }}`);
   lines.push(`        SCENARIO_NAME: "${yamlEscape(scenario.name)}"`);
   lines.push(`      run: |`);
-  lines.push(`        node -e "`);
-  lines.push(`          const fs = require('fs');`);
-  lines.push(`          fs.mkdirSync('/tmp/diag', {recursive: true});`);
-  lines.push(`          fs.writeFileSync('/tmp/diag/state.json', process.env.STATE_JSON || '{}');`);
-  lines.push(`          const log = JSON.parse(process.env.POLL_LOG_JSON || '[]');`);
-  lines.push(`          fs.writeFileSync('/tmp/diag/poll-log.jsonl',`);
-  lines.push(`            log.map(e => JSON.stringify(e)).join('\\n'));`);
-  lines.push(`        "`);
-  lines.push(`        STATE_DIR=/tmp/diag SCENARIO_NAME="$SCENARIO_NAME" \\`);
-  lines.push(`          node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"`);
+  lines.push(
+    `        node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"`
+  );
 
   return lines.join("\n");
 }
