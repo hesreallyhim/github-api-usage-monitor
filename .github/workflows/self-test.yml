@@ -19,8 +19,8 @@ jobs:
   baseline:
     runs-on: ubuntu-latest
     outputs:
-      state_json: ${{ steps.monitor.outputs.state_json }}
-      poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
+      state_json: ${{ steps.dump-state.outputs.state_json }}
+      poll_log_json: ${{ steps.dump-state.outputs.poll_log_json }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,13 +34,36 @@ jobs:
         run: sleep 90
 
       - name: Dump state.json
+        id: dump-state
+        if: always()
         run: |
           STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
-          echo "=== baseline: state.json ==="
+           echo "=== baseline: state.json ==="
           if [ -f "$STATE_FILE" ]; then
             cat "$STATE_FILE" | python3 -m json.tool
+            
+            # Capture for job outputs
+            echo "state_json<<EOF" >> $GITHUB_OUTPUT
+            cat "$STATE_FILE" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           else
             echo "state.json not found"
+            echo "state_json={}" >> $GITHUB_OUTPUT
+          fi
+          
+          echo ""
+          echo "=== poll-log.jsonl ==="
+          if [ -f "$POLL_LOG_FILE" ]; then
+            echo "Found $(wc -l < "$POLL_LOG_FILE") poll entries"
+            
+            # Convert JSONL to JSON array for output
+            POLL_LOG_JSON=$(jq -s '.' "$POLL_LOG_FILE" 2>/dev/null || echo '[]')
+            echo "poll_log_json<<EOF" >> $GITHUB_OUTPUT
+            echo "$POLL_LOG_JSON" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "poll-log.jsonl not found"
+            echo "poll_log_json=[]" >> $GITHUB_OUTPUT
           fi
 
   baseline-diag:
