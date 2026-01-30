@@ -132,7 +132,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -256,7 +255,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -380,7 +378,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -504,7 +501,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -630,7 +626,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -780,7 +775,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -903,7 +897,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -1027,7 +1020,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -1196,7 +1188,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
@@ -1322,7 +1313,6 @@ jobs:
                       win_max_ok = b['windows_crossed'] <= max_w
                       results.append((bucket_name, 'windows_crossed<=', win_max_ok,
                           str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
-                      str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))
 
           # Write markdown summary
           md = []
