@@ -33,12 +33,14 @@ jobs:
       - name: "Wait for polls (90s total)"
         run: sleep 90
 
-      - name: Dump state.json
+      - name: Dump state.json and capture outputs
         id: dump-state
         if: always()
         run: |
           STATE_FILE="${RUNNER_TEMP}/github-api-usage-monitor/state.json"
-           echo "=== baseline: state.json ==="
+          POLL_LOG_FILE="${RUNNER_TEMP}/github-api-usage-monitor/poll-log.jsonl"
+          
+          echo "=== baseline: state.json ==="
           if [ -f "$STATE_FILE" ]; then
             cat "$STATE_FILE" | python3 -m json.tool
             
