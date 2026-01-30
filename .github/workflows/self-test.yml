@@ -95,7 +95,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -194,7 +204,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -293,7 +313,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -392,7 +422,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -493,7 +533,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -616,7 +666,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -716,7 +776,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -815,7 +885,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -956,7 +1036,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})
@@ -1058,7 +1148,17 @@ jobs:
           import json, sys, os
           state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
-          strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'
+          # GitHub Actions boolean inputs produce empty string for false, 'true' for true
+          strict = os.environ.get('STRICT_VALIDATION', '') == 'true'
+
+          if not os.path.exists(state_path):
+              msg = 'SKIP — state.json not found'
+              print(msg)
+              if summary_path:
+                  with open(summary_path, 'a') as f:
+                      f.write(msg + '\n')
+              sys.exit(1 if strict else 0)
+
           with open(state_path) as f:
               state = json.load(f)
           buckets = state.get('buckets', {})

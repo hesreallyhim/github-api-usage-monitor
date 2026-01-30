@@ -45,6 +45,8 @@ function makeBucket(overrides: Partial<BucketState> = {}): BucketState {
     last_seen_ts: '2026-01-25T12:00:00.000Z',
     limit: 5000,
     remaining: 4900,
+    first_used: 100,
+    first_remaining: 4900,
     ...overrides,
   };
 }
@@ -91,6 +93,14 @@ describe('initBucket', () => {
 
     expect(bucket.limit).toBe(1000);
     expect(bucket.remaining).toBe(800);
+  });
+
+  it('sets first_used and first_remaining from initial sample', () => {
+    const sample = makeSample({ used: 42, remaining: 4958 });
+    const bucket = initBucket(sample, '2026-01-25T12:00:00.000Z');
+
+    expect(bucket.first_used).toBe(42);
+    expect(bucket.first_remaining).toBe(4958);
   });
 });
 
@@ -222,6 +232,71 @@ describe('updateBucket - reset boundary', () => {
     const result = updateBucket(bucket, sample, 'ts');
 
     expect(result.bucket.last_used).toBe(10);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// updateBucket tests - first_used/first_remaining preservation
+// -----------------------------------------------------------------------------
+
+describe('updateBucket - first_used/first_remaining preservation', () => {
+  const originalFirstUsed = 42;
+  const originalFirstRemaining = 4958;
+
+  function baseBucket(overrides: Partial<BucketState> = {}): BucketState {
+    return makeBucket({
+      first_used: originalFirstUsed,
+      first_remaining: originalFirstRemaining,
+      last_used: 100,
+      total_used: 50,
+      ...overrides,
+    });
+  }
+
+  it('preserves through normal delta', () => {
+    const bucket = baseBucket();
+    const sample = makeSample({ used: 150, reset: bucket.last_reset });
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.bucket.first_used).toBe(originalFirstUsed);
+    expect(result.bucket.first_remaining).toBe(originalFirstRemaining);
+  });
+
+  it('preserves through anomaly', () => {
+    const bucket = baseBucket();
+    const sample = makeSample({ used: 50, reset: bucket.last_reset }); // decrease → anomaly
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.anomaly).toBe(true);
+    expect(result.bucket.first_used).toBe(originalFirstUsed);
+    expect(result.bucket.first_remaining).toBe(originalFirstRemaining);
+  });
+
+  it('preserves through window crossing', () => {
+    const bucket = baseBucket({ last_used: 4500 });
+    const newReset = bucket.last_reset + 3600;
+    const sample = makeSample({ used: 10, reset: newReset });
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.window_crossed).toBe(true);
+    expect(result.bucket.first_used).toBe(originalFirstUsed);
+    expect(result.bucket.first_remaining).toBe(originalFirstRemaining);
+  });
+
+  it('preserves through reset rotation (no crossing)', () => {
+    const bucket = baseBucket();
+    const newReset = bucket.last_reset + 3600;
+    // used >= last_used → reset rotation, not a genuine crossing
+    const sample = makeSample({ used: 110, reset: newReset });
+
+    const result = updateBucket(bucket, sample, 'ts');
+
+    expect(result.window_crossed).toBe(false);
+    expect(result.bucket.first_used).toBe(originalFirstUsed);
+    expect(result.bucket.first_remaining).toBe(originalFirstRemaining);
   });
 });
 

@@ -52,12 +52,9 @@ if (existsSync(pollLogPath)) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatTime(isoOrEpoch) {
-  if (typeof isoOrEpoch === 'number') {
-    return new Date(isoOrEpoch * 1000).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
-  }
-  // ISO string — extract just HH:MM:SS for compact display
-  const d = new Date(isoOrEpoch);
+/** Format an ISO timestamp string to compact HH:MM:SS UTC display. */
+function formatISOTime(iso) {
+  const d = new Date(iso);
   return d.toISOString().slice(11, 19) + ' UTC';
 }
 
@@ -111,16 +108,51 @@ function renderPollTimeline(pollLog) {
   lines.push('| # | Time | Bucket | Used | Remaining | Delta | Event |');
   lines.push('|--:|------|--------|-----:|----------:|------:|-------|');
 
+  let lastEmittedPoll = 0;
+
   for (const entry of pollLog) {
-    const time = formatTime(entry.timestamp);
+    const time = formatISOTime(entry.timestamp);
 
     // Show each bucket that has activity (delta > 0, window crossing, or anomaly)
     // On first poll (poll_number === 1), show all buckets as baseline
     const bucketEntries = Object.entries(entry.buckets);
 
     if (bucketEntries.length === 0) {
+      // Insert quiet-poll gap summary if needed
+      if (entry.poll_number - lastEmittedPoll > 1) {
+        const gapStart = lastEmittedPoll + 1;
+        const gapEnd = entry.poll_number - 1;
+        if (gapStart <= gapEnd) {
+          const count = gapEnd - gapStart + 1;
+          const range = gapStart === gapEnd ? String(gapStart) : `${gapStart}–${gapEnd}`;
+          lines.push(`| ${range} | | *(no activity — ${count} poll${count > 1 ? 's' : ''})* | | | | |`);
+        }
+      }
       lines.push(`| ${entry.poll_number} | ${time} | *(empty)* | | | | |`);
+      lastEmittedPoll = entry.poll_number;
       continue;
+    }
+
+    // Check if this poll has any interesting rows
+    const hasInteresting = bucketEntries.some(
+      ([, snap]) =>
+        entry.poll_number === 1 ||
+        snap.delta > 0 ||
+        snap.window_crossed ||
+        snap.anomaly
+    );
+
+    if (!hasInteresting) continue;
+
+    // Insert quiet-poll gap summary before this interesting poll
+    if (entry.poll_number - lastEmittedPoll > 1) {
+      const gapStart = lastEmittedPoll + 1;
+      const gapEnd = entry.poll_number - 1;
+      if (gapStart <= gapEnd) {
+        const count = gapEnd - gapStart + 1;
+        const range = gapStart === gapEnd ? String(gapStart) : `${gapStart}–${gapEnd}`;
+        lines.push(`| ${range} | | *(no activity — ${count} poll${count > 1 ? 's' : ''})* | | | | |`);
+      }
     }
 
     let firstBucketInPoll = true;
@@ -147,6 +179,19 @@ function renderPollTimeline(pollLog) {
       lines.push(
         `| ${pollNum} | ${timeCol} | ${name} | ${snap.used} | ${snap.remaining} | ${snap.delta} | ${event.join(', ') || '-'} |`
       );
+    }
+
+    lastEmittedPoll = entry.poll_number;
+  }
+
+  // Trailing quiet-poll gap (if the last few polls had no activity)
+  if (pollLog.length > 0) {
+    const lastPoll = pollLog[pollLog.length - 1].poll_number;
+    if (lastPoll > lastEmittedPoll) {
+      const gapStart = lastEmittedPoll + 1;
+      const count = lastPoll - gapStart + 1;
+      const range = gapStart === lastPoll ? String(gapStart) : `${gapStart}–${lastPoll}`;
+      lines.push(`| ${range} | | *(no activity — ${count} poll${count > 1 ? 's' : ''})* | | | | |`);
     }
   }
 
@@ -193,7 +238,7 @@ function renderWindowCrossings(pollLog) {
   lines.push('');
 
   for (const c of crossings) {
-    lines.push(`**${c.bucket}** — detected at poll #${c.poll_number} (${formatTime(c.timestamp)})`);
+    lines.push(`**${c.bucket}** — detected at poll #${c.poll_number} (${formatISOTime(c.timestamp)})`);
     if (c.before) {
       lines.push(`- Before: used=${c.before.used}, remaining=${c.before.remaining}, reset=${formatResetEpoch(c.before.reset)}`);
     }

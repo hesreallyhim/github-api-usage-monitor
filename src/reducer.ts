@@ -136,12 +136,16 @@ export function updateBucket(
     // Anomaly: used decreased without reset change
     return {
       bucket: {
-        ...bucket,
+        last_reset: bucket.last_reset,
         last_used: sample.used,
+        total_used: bucket.total_used,
+        windows_crossed: bucket.windows_crossed,
         anomalies: bucket.anomalies + 1,
         last_seen_ts: timestamp,
         limit: sample.limit,
         remaining: sample.remaining,
+        first_used: bucket.first_used,
+        first_remaining: bucket.first_remaining,
       },
       delta: 0,
       anomaly: true,
@@ -152,12 +156,16 @@ export function updateBucket(
   // Normal case: accumulate delta
   return {
     bucket: {
-      ...bucket,
+      last_reset: bucket.last_reset,
       last_used: sample.used,
       total_used: bucket.total_used + delta,
+      windows_crossed: bucket.windows_crossed,
+      anomalies: bucket.anomalies,
       last_seen_ts: timestamp,
       limit: sample.limit,
       remaining: sample.remaining,
+      first_used: bucket.first_used,
+      first_remaining: bucket.first_remaining,
     },
     delta,
     anomaly: false,

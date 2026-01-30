@@ -23,6 +23,14 @@ const outputPath = join(__dirname, "..", ".github", "workflows", "self-test.yml"
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Escape a string for use inside a YAML double-quoted scalar.
+ * Replaces backslashes and double quotes with their escape sequences.
+ */
+function yamlEscape(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /** Indent every line of a multi-line string by `n` spaces. */
 function indent(text: string, n: number): string {
   const pad = " ".repeat(n);
@@ -111,7 +119,17 @@ function generateValidationScript(scenario: Scenario): string {
     "import json, sys, os",
     "state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')",
     "summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')",
-    "strict = os.environ.get('STRICT_VALIDATION', 'false') == 'true'",
+    "# GitHub Actions boolean inputs produce empty string for false, 'true' for true",
+    "strict = os.environ.get('STRICT_VALIDATION', '') == 'true'",
+    "",
+    "if not os.path.exists(state_path):",
+    "    msg = 'SKIP — state.json not found'",
+    "    print(msg)",
+    "    if summary_path:",
+    "        with open(summary_path, 'a') as f:",
+    "            f.write(msg + '\\n')",
+    "    sys.exit(1 if strict else 0)",
+    "",
     "with open(state_path) as f:",
     "    state = json.load(f)",
     "buckets = state.get('buckets', {})",
@@ -179,7 +197,7 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
   const hasCallSteps = scenario.endpoint_calls.some((ec) => ec.calls > 0);
   if (hasCallSteps) {
     lines.push(``);
-    lines.push(`    - name: "Scenario: ${scenario.name}"`);
+    lines.push(`    - name: "Scenario: ${yamlEscape(scenario.name)}"`);
     lines.push(`      env:`);
     lines.push(`        TOKEN: \${{ secrets.GITHUB_TOKEN }}`);
     lines.push(`        REPO: \${{ github.repository }}`);
@@ -215,7 +233,11 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
   lines.push(`          echo "state.json not found"`);
   lines.push(`        fi`);
 
-  // Validation step — always runs; only fails when strict_validation is enabled
+  // Validation step — intentionally has NO `if: always()` condition.
+  // We only want validation to run when the scenario completes successfully.
+  // If a prior step fails (e.g. the poller crashes), this step is skipped by
+  // GitHub Actions' default behavior, which is the desired outcome.
+  // When it does run, it only fails the step when strict_validation is enabled.
   const hasExpected = Object.keys(scenario.expected).length > 0;
   if (hasExpected) {
     lines.push(``);
@@ -238,7 +260,7 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
   lines.push(`      if: always()`);
   lines.push(`      env:`);
   lines.push(`        STATE_DIR: \${{ runner.temp }}/github-api-usage-monitor`);
-  lines.push(`        SCENARIO_NAME: "${scenario.name}"`);
+  lines.push(`        SCENARIO_NAME: "${yamlEscape(scenario.name)}"`);
   lines.push(`      run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"`);
 
   return lines.join("\n");
