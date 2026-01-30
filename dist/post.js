@@ -32089,6 +32089,7 @@ function generateWarnings(state) {
 
 
 
+
 // -----------------------------------------------------------------------------
 // Post entry point
 // -----------------------------------------------------------------------------
@@ -32137,10 +32138,17 @@ async function handlePost() {
         warnings.push('No PID file found (monitor may not have started)');
     }
     // Read final state
+    const statePath = getStatePath();
+    const pollLogPath = paths_getPollLogPath();
+    info(`State path: ${statePath}`);
+    info(`Poll log path: ${pollLogPath}`);
     const stateResult = state_readState();
     if (!stateResult.success) {
         if (stateResult.notFound) {
             warning('No state file found. Monitor may not have started or state was lost.');
+            const pollLog = readPollLog();
+            setOutput('state_json', JSON.stringify({}));
+            setOutput('poll_log_json', JSON.stringify(pollLog));
             return;
         }
         throw new Error(`Failed to read state: ${stateResult.error}`);

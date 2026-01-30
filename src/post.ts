@@ -20,6 +20,7 @@ import { markStopped, reduce } from './reducer';
 import { fetchRateLimit } from './github';
 import { render, writeStepSummary, generateWarnings } from './output';
 import { readPollLog } from './poll-log';
+import { getStatePath, getPollLogPath } from './paths';
 
 // -----------------------------------------------------------------------------
 // Post entry point
@@ -72,10 +73,18 @@ async function handlePost(): Promise<void> {
   }
 
   // Read final state
+  const statePath = getStatePath();
+  const pollLogPath = getPollLogPath();
+  core.info(`State path: ${statePath}`);
+  core.info(`Poll log path: ${pollLogPath}`);
+
   const stateResult = readState();
   if (!stateResult.success) {
     if (stateResult.notFound) {
       core.warning('No state file found. Monitor may not have started or state was lost.');
+      const pollLog = readPollLog();
+      core.setOutput('state_json', JSON.stringify({}));
+      core.setOutput('poll_log_json', JSON.stringify(pollLog));
       return;
     }
     throw new Error(`Failed to read state: ${stateResult.error}`);
