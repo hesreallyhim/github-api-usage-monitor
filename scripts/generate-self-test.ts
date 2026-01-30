@@ -103,9 +103,14 @@ function generateValidationScript(scenario: Scenario): string {
   // Build Python dict literal for expectations
   const entries: string[] = [];
   for (const [bucket, exp] of Object.entries(scenario.expected)) {
-    entries.push(
-      `    '${bucket}': {'delta': ${exp.total_used_delta}, 'max_windows': ${exp.windows_crossed_max}}`
-    );
+    const parts = [`'delta': ${exp.total_used_delta}`];
+    if (exp.windows_crossed_min !== undefined) {
+      parts.push(`'min_windows': ${exp.windows_crossed_min}`);
+    }
+    if (exp.windows_crossed_max !== undefined) {
+      parts.push(`'max_windows': ${exp.windows_crossed_max}`);
+    }
+    entries.push(`    '${bucket}': {${parts.join(", ")}}`);
   }
   const expectDict = "{\n" + entries.join(",\n") + "\n}";
 
@@ -143,9 +148,21 @@ function generateValidationScript(scenario: Scenario): string {
     "    used_ok = b['total_used'] >= expect['delta']",
     "    results.append((bucket_name, 'total_used', used_ok,",
     "        str(b['total_used']) + ' (expected >= ' + str(expect['delta']) + ')'))",
-    "    win_ok = b['windows_crossed'] <= expect['max_windows']",
-    "    results.append((bucket_name, 'windows_crossed', win_ok,",
-    "        str(b['windows_crossed']) + ' (expected <= ' + str(expect['max_windows']) + ')'))",
+    "    min_w = expect.get('min_windows')",
+    "    if min_w is not None:",
+    "        win_min_ok = b['windows_crossed'] >= min_w",
+    "        results.append((bucket_name, 'windows_crossed>=', win_min_ok,",
+    "            str(b['windows_crossed']) + ' (expected >= ' + str(min_w) + ')'))",
+    "    max_w = expect.get('max_windows')",
+    "    if max_w is not None:",
+    "        if max_w == 0 and min_w is None:",
+    "            win_eq_ok = b['windows_crossed'] == 0",
+    "            results.append((bucket_name, 'windows_crossed==', win_eq_ok,",
+    "                str(b['windows_crossed']) + ' (expected == 0)'))",
+    "        else:",
+    "            win_max_ok = b['windows_crossed'] <= max_w",
+    "            results.append((bucket_name, 'windows_crossed<=', win_max_ok,",
+    "                str(b['windows_crossed']) + ' (expected <= ' + str(max_w) + ')'))",
     "",
     "# Write markdown summary",
     "md = []",

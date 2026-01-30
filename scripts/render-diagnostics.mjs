@@ -137,67 +137,31 @@ function renderPollTimeline(pollLog) {
   const lines = [];
   lines.push('#### Poll Timeline');
   lines.push('');
-  lines.push('| # | Time | Bucket | Used | Remaining | Delta | Event |');
-  lines.push('|--:|------|--------|-----:|----------:|------:|-------|');
+  lines.push('| # | Time | Δt | Bucket | Used | Remaining | Delta | Event |');
+  lines.push('|--:|------|---:|--------|-----:|----------:|------:|-------|');
 
-  let lastEmittedPoll = 0;
+  let prevTs = null;
 
   for (const entry of pollLog) {
     const time = formatISOTime(entry.timestamp);
-
-    // Show each bucket that has activity (delta > 0, window crossing, or anomaly)
-    // On first poll (poll_number === 1), show all buckets as baseline
-    const bucketEntries = Object.entries(entry.buckets);
-
-    if (bucketEntries.length === 0) {
-      // Insert quiet-poll gap summary if needed
-      if (entry.poll_number - lastEmittedPoll > 1) {
-        const gapStart = lastEmittedPoll + 1;
-        const gapEnd = entry.poll_number - 1;
-        if (gapStart <= gapEnd) {
-          const count = gapEnd - gapStart + 1;
-          const range = gapStart === gapEnd ? String(gapStart) : `${gapStart}–${gapEnd}`;
-          lines.push(`| ${range} | | *(no activity — ${count} poll${count > 1 ? 's' : ''})* | | | | |`);
-        }
-      }
-      lines.push(`| ${entry.poll_number} | ${time} | *(empty)* | | | | |`);
-      lastEmittedPoll = entry.poll_number;
-      continue;
+    const ts = Date.parse(entry.timestamp);
+    let dt = '-';
+    if (!Number.isNaN(ts) && prevTs !== null) {
+      dt = ((ts - prevTs) / 1000).toFixed(1) + 's';
     }
 
-    // Check if this poll has any interesting rows
-    const hasInteresting = bucketEntries.some(
-      ([, snap]) =>
-        entry.poll_number === 1 ||
-        snap.delta > 0 ||
-        snap.window_crossed ||
-        snap.anomaly
+    const bucketEntries = Object.entries(entry.buckets).sort(([a], [b]) =>
+      a.localeCompare(b)
     );
 
-    if (!hasInteresting) continue;
-
-    // Insert quiet-poll gap summary before this interesting poll
-    if (entry.poll_number - lastEmittedPoll > 1) {
-      const gapStart = lastEmittedPoll + 1;
-      const gapEnd = entry.poll_number - 1;
-      if (gapStart <= gapEnd) {
-        const count = gapEnd - gapStart + 1;
-        const range = gapStart === gapEnd ? String(gapStart) : `${gapStart}–${gapEnd}`;
-        lines.push(`| ${range} | | *(no activity — ${count} poll${count > 1 ? 's' : ''})* | | | | |`);
-      }
+    if (bucketEntries.length === 0) {
+      lines.push(`| ${entry.poll_number} | ${time} | ${dt} | *(empty)* | | | | |`);
+      prevTs = ts;
+      continue;
     }
 
     let firstBucketInPoll = true;
     for (const [name, snap] of bucketEntries) {
-      // Always show first poll as baseline; after that, only show interesting rows
-      const isInteresting =
-        entry.poll_number === 1 ||
-        snap.delta > 0 ||
-        snap.window_crossed ||
-        snap.anomaly;
-
-      if (!isInteresting) continue;
-
       const event = [];
       if (entry.poll_number === 1) event.push('baseline');
       if (snap.window_crossed) event.push('**window crossed**');
@@ -206,25 +170,15 @@ function renderPollTimeline(pollLog) {
 
       const pollNum = firstBucketInPoll ? String(entry.poll_number) : '';
       const timeCol = firstBucketInPoll ? time : '';
+      const dtCol = firstBucketInPoll ? dt : '';
       firstBucketInPoll = false;
 
       lines.push(
-        `| ${pollNum} | ${timeCol} | ${name} | ${snap.used} | ${snap.remaining} | ${snap.delta} | ${event.join(', ') || '-'} |`
+        `| ${pollNum} | ${timeCol} | ${dtCol} | ${name} | ${snap.used} | ${snap.remaining} | ${snap.delta} | ${event.join(', ') || '-'} |`
       );
     }
 
-    lastEmittedPoll = entry.poll_number;
-  }
-
-  // Trailing quiet-poll gap (if the last few polls had no activity)
-  if (pollLog.length > 0) {
-    const lastPoll = pollLog[pollLog.length - 1].poll_number;
-    if (lastPoll > lastEmittedPoll) {
-      const gapStart = lastEmittedPoll + 1;
-      const count = lastPoll - gapStart + 1;
-      const range = gapStart === lastPoll ? String(gapStart) : `${gapStart}–${lastPoll}`;
-      lines.push(`| ${range} | | *(no activity — ${count} poll${count > 1 ? 's' : ''})* | | | | |`);
-    }
+    prevTs = ts;
   }
 
   lines.push('');

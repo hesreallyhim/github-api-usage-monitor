@@ -29,8 +29,10 @@ export interface Endpoint {
 export interface BucketExpectation {
   /** Exact number of API calls we make to this bucket. */
   total_used_delta: number;
+  /** Lower bound on the number of rate-limit windows crossed during the scenario. */
+  windows_crossed_min?: number;
   /** Upper bound on the number of rate-limit windows crossed during the scenario. */
-  windows_crossed_max: number;
+  windows_crossed_max?: number;
 }
 
 /** Associates an endpoint with how many times it should be called. */
@@ -139,7 +141,7 @@ export const SCENARIOS: Scenario[] = [
     inter_call_sleep_s: 3,
     poll_duration_s: 90,
     expected: {
-      search: { total_used_delta: 2, windows_crossed_max: 0 },
+      search: { total_used_delta: 2, windows_crossed_min: 1 },
     },
   },
 
@@ -180,7 +182,7 @@ export const SCENARIOS: Scenario[] = [
     poll_duration_s: 120,
     expected: {
       core: { total_used_delta: 2, windows_crossed_max: 0 },
-      search: { total_used_delta: 2, windows_crossed_max: 0 },
+      search: { total_used_delta: 2, windows_crossed_min: 1 },
       graphql: { total_used_delta: 2, windows_crossed_max: 0 },
     },
   },
@@ -205,7 +207,10 @@ export const SCENARIOS: Scenario[] = [
     inter_call_sleep_s: 65,
     poll_duration_s: 150,
     expected: {
-      search: { total_used_delta: 2, windows_crossed_max: 1 },
+      search: {
+        total_used_delta: 2,
+        windows_crossed_min: 2,
+      },
     },
   },
 
@@ -231,7 +236,7 @@ export const SCENARIOS: Scenario[] = [
     poll_duration_s: 120,
     expected: {
       core: { total_used_delta: 3, windows_crossed_max: 0 },
-      search: { total_used_delta: 2, windows_crossed_max: 0 },
+      search: { total_used_delta: 2, windows_crossed_min: 1 },
     },
   },
 
