@@ -36,7 +36,7 @@ jobs:
   baseline-diag:
     runs-on: ubuntu-latest
     needs: [baseline]
-    if: always()
+    if: ${{ needs.baseline.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,7 +50,8 @@ jobs:
 
   core-5:
     runs-on: ubuntu-latest
-    needs: [baseline-diag]
+    needs: [baseline-diag, baseline]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -83,6 +84,7 @@ jobs:
         run: sleep 70
 
       - name: Validate expectations
+        if: ${{ needs.baseline.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -159,7 +161,7 @@ jobs:
   core-5-diag:
     runs-on: ubuntu-latest
     needs: [core-5]
-    if: always()
+    if: ${{ needs.core-5.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -173,7 +175,8 @@ jobs:
 
   core-10:
     runs-on: ubuntu-latest
-    needs: [core-5-diag]
+    needs: [core-5-diag, core-5]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -206,6 +209,7 @@ jobs:
         run: sleep 60
 
       - name: Validate expectations
+        if: ${{ needs.core-5.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -282,7 +286,7 @@ jobs:
   core-10-diag:
     runs-on: ubuntu-latest
     needs: [core-10]
-    if: always()
+    if: ${{ needs.core-10.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -296,7 +300,8 @@ jobs:
 
   search-2:
     runs-on: ubuntu-latest
-    needs: [core-10-diag]
+    needs: [core-10-diag, core-10]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -329,6 +334,7 @@ jobs:
         run: sleep 80
 
       - name: Validate expectations
+        if: ${{ needs.core-10.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -405,7 +411,7 @@ jobs:
   search-2-diag:
     runs-on: ubuntu-latest
     needs: [search-2]
-    if: always()
+    if: ${{ needs.search-2.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -419,7 +425,8 @@ jobs:
 
   code-search-2:
     runs-on: ubuntu-latest
-    needs: [search-2-diag]
+    needs: [search-2-diag, search-2]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -452,6 +459,7 @@ jobs:
         run: sleep 80
 
       - name: Validate expectations
+        if: ${{ needs.search-2.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -528,7 +536,7 @@ jobs:
   code-search-2-diag:
     runs-on: ubuntu-latest
     needs: [code-search-2]
-    if: always()
+    if: ${{ needs.code-search-2.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -542,7 +550,8 @@ jobs:
 
   graphql-2:
     runs-on: ubuntu-latest
-    needs: [code-search-2-diag]
+    needs: [code-search-2-diag, code-search-2]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -577,6 +586,7 @@ jobs:
         run: sleep 80
 
       - name: Validate expectations
+        if: ${{ needs.code-search-2.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -653,7 +663,7 @@ jobs:
   graphql-2-diag:
     runs-on: ubuntu-latest
     needs: [graphql-2]
-    if: always()
+    if: ${{ needs.graphql-2.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -667,7 +677,8 @@ jobs:
 
   mixed-small:
     runs-on: ubuntu-latest
-    needs: [graphql-2-diag]
+    needs: [graphql-2-diag, graphql-2]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -724,6 +735,7 @@ jobs:
         run: sleep 96
 
       - name: Validate expectations
+        if: ${{ needs.graphql-2.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -802,7 +814,7 @@ jobs:
   mixed-small-diag:
     runs-on: ubuntu-latest
     needs: [mixed-small]
-    if: always()
+    if: ${{ needs.mixed-small.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -816,7 +828,8 @@ jobs:
 
   core-burst:
     runs-on: ubuntu-latest
-    needs: [mixed-small-diag]
+    needs: [mixed-small-diag, mixed-small]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -848,6 +861,7 @@ jobs:
         run: sleep 80
 
       - name: Validate expectations
+        if: ${{ needs.mixed-small.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -924,7 +938,7 @@ jobs:
   core-burst-diag:
     runs-on: ubuntu-latest
     needs: [core-burst]
-    if: always()
+    if: ${{ needs.core-burst.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -938,7 +952,8 @@ jobs:
 
   search-window-cross:
     runs-on: ubuntu-latest
-    needs: [core-burst-diag]
+    needs: [core-burst-diag, core-burst]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -971,6 +986,7 @@ jobs:
         run: sleep 16
 
       - name: Validate expectations
+        if: ${{ needs.core-burst.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -1047,7 +1063,7 @@ jobs:
   search-window-cross-diag:
     runs-on: ubuntu-latest
     needs: [search-window-cross]
-    if: always()
+    if: ${{ needs.search-window-cross.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -1061,7 +1077,8 @@ jobs:
 
   idle-check:
     runs-on: ubuntu-latest
-    needs: [search-window-cross-diag]
+    needs: [search-window-cross-diag, search-window-cross]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -1080,7 +1097,7 @@ jobs:
   idle-check-diag:
     runs-on: ubuntu-latest
     needs: [idle-check]
-    if: always()
+    if: ${{ needs.idle-check.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -1094,7 +1111,8 @@ jobs:
 
   core-then-search:
     runs-on: ubuntu-latest
-    needs: [idle-check-diag]
+    needs: [idle-check-diag, idle-check]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -1138,6 +1156,7 @@ jobs:
         run: sleep 100
 
       - name: Validate expectations
+        if: ${{ needs.idle-check.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -1215,7 +1234,7 @@ jobs:
   core-then-search-diag:
     runs-on: ubuntu-latest
     needs: [core-then-search]
-    if: always()
+    if: ${{ needs.core-then-search.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -1229,7 +1248,8 @@ jobs:
 
   graphql-5:
     runs-on: ubuntu-latest
-    needs: [core-then-search-diag]
+    needs: [core-then-search-diag, core-then-search]
+    if: ${{ always() }}
     outputs:
       state_json: ${{ steps.monitor.outputs.state_json }}
       poll_log_json: ${{ steps.monitor.outputs.poll_log_json }}
@@ -1264,6 +1284,7 @@ jobs:
         run: sleep 70
 
       - name: Validate expectations
+        if: ${{ needs.core-then-search.result == 'success' }}
         env:
           STATE_DIR: ${{ runner.temp }}/github-api-usage-monitor
           STRICT_VALIDATION: ${{ inputs.strict_validation }}
@@ -1340,7 +1361,7 @@ jobs:
   graphql-5-diag:
     runs-on: ubuntu-latest
     needs: [graphql-5]
-    if: always()
+    if: ${{ needs.graphql-5.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v4
 

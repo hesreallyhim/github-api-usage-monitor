@@ -194,13 +194,21 @@ function generateValidationScript(scenario: Scenario): string {
 // Per-job YAML generation
 // ---------------------------------------------------------------------------
 
-function generateJob(scenario: Scenario, previousId: string | null): string {
+function generateJob(
+  scenario: Scenario,
+  previousId: string | null,
+  previousScenarioId: string | null
+): string {
   const lines: string[] = [];
 
   lines.push(`${scenario.id}:`);
   lines.push(`  runs-on: ubuntu-latest`);
   if (previousId !== null) {
-    lines.push(`  needs: [${previousId}]`);
+    const needs = previousScenarioId
+      ? `[${previousId}, ${previousScenarioId}]`
+      : `[${previousId}]`;
+    lines.push(`  needs: ${needs}`);
+    lines.push(`  if: \${{ always() }}`);
   }
   lines.push(`  outputs:`);
   lines.push(`    state_json: \${{ steps.monitor.outputs.state_json }}`);
@@ -249,6 +257,9 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
   if (hasExpected) {
     lines.push(``);
     lines.push(`    - name: Validate expectations`);
+    if (previousScenarioId) {
+      lines.push(`      if: \${{ needs.${previousScenarioId}.result == 'success' }}`);
+    }
     lines.push(`      env:`);
     lines.push(`        STATE_DIR: \${{ runner.temp }}/github-api-usage-monitor`);
     lines.push(`        STRICT_VALIDATION: \${{ inputs.strict_validation }}`);
@@ -275,7 +286,7 @@ function generateDiagnosticsJob(scenario: Scenario): string {
   lines.push(`${diagId}:`);
   lines.push(`  runs-on: ubuntu-latest`);
   lines.push(`  needs: [${scenario.id}]`);
-  lines.push(`  if: always()`);
+  lines.push(`  if: \${{ needs.${scenario.id}.result != 'skipped' }}`);
   lines.push(`  steps:`);
   lines.push(`    - uses: actions/checkout@v4`);
   lines.push(``);
@@ -318,12 +329,14 @@ jobs:`;
 
   const jobBlocks: string[] = [];
   let previousId: string | null = null;
+  let previousScenarioId: string | null = null;
 
   for (const scenario of SCENARIOS) {
-    jobBlocks.push(indent(generateJob(scenario, previousId), 2));
+    jobBlocks.push(indent(generateJob(scenario, previousId, previousScenarioId), 2));
     jobBlocks.push(indent(generateDiagnosticsJob(scenario), 2));
     // Next scenario depends on the diagnostics job completing
     previousId = `${scenario.id}-diag`;
+    previousScenarioId = scenario.id;
   }
 
   return header + "\n" + jobBlocks.join("\n\n") + "\n";
