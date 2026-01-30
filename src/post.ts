@@ -83,8 +83,13 @@ async function handlePost(): Promise<void> {
     if (stateResult.notFound) {
       core.warning('No state file found. Monitor may not have started or state was lost.');
       const pollLog = readPollLog();
-      core.setOutput('state_json', JSON.stringify({}));
+      const emptyState = {};
+      core.setOutput('state_json', JSON.stringify(emptyState));
       core.setOutput('poll_log_json', JSON.stringify(pollLog));
+      core.info(
+        `Outputs set (missing state): state_json bytes=${JSON.stringify(emptyState).length}, ` +
+          `poll_log entries=${pollLog.length}`,
+      );
       return;
     }
     throw new Error(`Failed to read state: ${stateResult.error}`);
@@ -150,6 +155,10 @@ async function handlePost(): Promise<void> {
   const pollLog = readPollLog();
   core.setOutput('state_json', JSON.stringify(finalState));
   core.setOutput('poll_log_json', JSON.stringify(pollLog));
+  core.info(
+    `Outputs set: state_json bytes=${JSON.stringify(finalState).length}, ` +
+      `poll_log entries=${pollLog.length}`,
+  );
 
   core.info('Monitor stopped');
 }

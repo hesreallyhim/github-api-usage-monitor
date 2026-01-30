@@ -32147,8 +32147,11 @@ async function handlePost() {
         if (stateResult.notFound) {
             warning('No state file found. Monitor may not have started or state was lost.');
             const pollLog = readPollLog();
-            setOutput('state_json', JSON.stringify({}));
+            const emptyState = {};
+            setOutput('state_json', JSON.stringify(emptyState));
             setOutput('poll_log_json', JSON.stringify(pollLog));
+            info(`Outputs set (missing state): state_json bytes=${JSON.stringify(emptyState).length}, ` +
+                `poll_log entries=${pollLog.length}`);
             return;
         }
         throw new Error(`Failed to read state: ${stateResult.error}`);
@@ -32205,6 +32208,8 @@ async function handlePost() {
     const pollLog = readPollLog();
     setOutput('state_json', JSON.stringify(finalState));
     setOutput('poll_log_json', JSON.stringify(pollLog));
+    info(`Outputs set: state_json bytes=${JSON.stringify(finalState).length}, ` +
+        `poll_log entries=${pollLog.length}`);
     info('Monitor stopped');
 }
 // -----------------------------------------------------------------------------
