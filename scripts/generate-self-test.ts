@@ -254,14 +254,10 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
     lines.push(`        PYEOF`);
   }
 
-  // Diagnostic details step — always runs, writes <details> block to step summary
-  lines.push(``);
-  lines.push(`    - name: Diagnostic details`);
-  lines.push(`      if: always()`);
-  lines.push(`      env:`);
-  lines.push(`        STATE_DIR: \${{ runner.temp }}/github-api-usage-monitor`);
-  lines.push(`        SCENARIO_NAME: "${yamlEscape(scenario.name)}"`);
-  lines.push(`      run: node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"`);
+  // NOTE: Diagnostic details (poll timeline, window crossings, bucket summary)
+  // are NOT rendered here. These steps run before post.ts, so state.json is
+  // incomplete (missing final poll, stopped_at_ts). Detailed diagnostics
+  // should be rendered in post.ts where the state is finalized.
 
   return lines.join("\n");
 }
