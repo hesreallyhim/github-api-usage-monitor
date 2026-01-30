@@ -84,11 +84,13 @@ async function handlePost(): Promise<void> {
       core.warning('No state file found. Monitor may not have started or state was lost.');
       const pollLog = readPollLog();
       const emptyState = {};
-      core.setOutput('state_json', JSON.stringify(emptyState));
-      core.setOutput('poll_log_json', JSON.stringify(pollLog));
+      const stateJson = JSON.stringify(emptyState);
+      const pollLogJson = JSON.stringify(pollLog);
+      core.setOutput('state_json', stateJson);
+      core.setOutput('poll_log_json', pollLogJson);
       core.info(
-        `Outputs set (missing state): state_json bytes=${JSON.stringify(emptyState).length}, ` +
-          `poll_log entries=${pollLog.length}`,
+        `Outputs set (missing state): state_json bytes=${stateJson.length}, ` +
+          `poll_log_json bytes=${pollLogJson.length}, poll_log entries=${pollLog.length}`,
       );
       return;
     }
@@ -153,11 +155,13 @@ async function handlePost(): Promise<void> {
 
   // Expose finalized state and poll log as action outputs for downstream diagnostics jobs
   const pollLog = readPollLog();
-  core.setOutput('state_json', JSON.stringify(finalState));
-  core.setOutput('poll_log_json', JSON.stringify(pollLog));
+  const stateJson = JSON.stringify(finalState);
+  const pollLogJson = JSON.stringify(pollLog);
+  core.setOutput('state_json', stateJson);
+  core.setOutput('poll_log_json', pollLogJson);
   core.info(
-    `Outputs set: state_json bytes=${JSON.stringify(finalState).length}, ` +
-      `poll_log entries=${pollLog.length}`,
+    `Outputs set: state_json bytes=${stateJson.length}, ` +
+      `poll_log_json bytes=${pollLogJson.length}, poll_log entries=${pollLog.length}`,
   );
 
   core.info('Monitor stopped');

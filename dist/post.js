@@ -32148,10 +32148,12 @@ async function handlePost() {
             warning('No state file found. Monitor may not have started or state was lost.');
             const pollLog = readPollLog();
             const emptyState = {};
-            setOutput('state_json', JSON.stringify(emptyState));
-            setOutput('poll_log_json', JSON.stringify(pollLog));
-            info(`Outputs set (missing state): state_json bytes=${JSON.stringify(emptyState).length}, ` +
-                `poll_log entries=${pollLog.length}`);
+            const stateJson = JSON.stringify(emptyState);
+            const pollLogJson = JSON.stringify(pollLog);
+            setOutput('state_json', stateJson);
+            setOutput('poll_log_json', pollLogJson);
+            info(`Outputs set (missing state): state_json bytes=${stateJson.length}, ` +
+                `poll_log_json bytes=${pollLogJson.length}, poll_log entries=${pollLog.length}`);
             return;
         }
         throw new Error(`Failed to read state: ${stateResult.error}`);
@@ -32206,10 +32208,12 @@ async function handlePost() {
     writeStepSummary(markdown);
     // Expose finalized state and poll log as action outputs for downstream diagnostics jobs
     const pollLog = readPollLog();
-    setOutput('state_json', JSON.stringify(finalState));
-    setOutput('poll_log_json', JSON.stringify(pollLog));
-    info(`Outputs set: state_json bytes=${JSON.stringify(finalState).length}, ` +
-        `poll_log entries=${pollLog.length}`);
+    const stateJson = JSON.stringify(finalState);
+    const pollLogJson = JSON.stringify(pollLog);
+    setOutput('state_json', stateJson);
+    setOutput('poll_log_json', pollLogJson);
+    info(`Outputs set: state_json bytes=${stateJson.length}, ` +
+        `poll_log_json bytes=${pollLogJson.length}, poll_log entries=${pollLog.length}`);
     info('Monitor stopped');
 }
 // -----------------------------------------------------------------------------
