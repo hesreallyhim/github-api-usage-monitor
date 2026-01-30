@@ -27976,16 +27976,16 @@ function file_command_issueFileCommand(command, message) {
     if (!filePath) {
         throw new Error(`Unable to find environment variable for file command ${command}`);
     }
-    if (!fs.existsSync(filePath)) {
+    if (!external_fs_namespaceObject.existsSync(filePath)) {
         throw new Error(`Missing file at path: ${filePath}`);
     }
-    fs.appendFileSync(filePath, `${toCommandValue(message)}${os.EOL}`, {
+    external_fs_namespaceObject.appendFileSync(filePath, `${utils_toCommandValue(message)}${external_os_namespaceObject.EOL}`, {
         encoding: 'utf8'
     });
 }
 function file_command_prepareKeyValueMessage(key, value) {
-    const delimiter = `ghadelimiter_${crypto.randomUUID()}`;
-    const convertedValue = toCommandValue(value);
+    const delimiter = `ghadelimiter_${external_crypto_namespaceObject.randomUUID()}`;
+    const convertedValue = utils_toCommandValue(value);
     // These should realistically never happen, but just in case someone finds a
     // way to exploit uuid generation let's not allow keys or values that contain
     // the delimiter.
@@ -27995,7 +27995,7 @@ function file_command_prepareKeyValueMessage(key, value) {
     if (convertedValue.includes(delimiter)) {
         throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
     }
-    return `${key}<<${delimiter}${os.EOL}${convertedValue}${os.EOL}${delimiter}`;
+    return `${key}<<${delimiter}${external_os_namespaceObject.EOL}${convertedValue}${external_os_namespaceObject.EOL}${delimiter}`;
 }
 //# sourceMappingURL=file-command.js.map
 ;// CONCATENATED MODULE: external "path"
@@ -30617,10 +30617,10 @@ function getBooleanInput(name, options) {
 function setOutput(name, value) {
     const filePath = process.env['GITHUB_OUTPUT'] || '';
     if (filePath) {
-        return issueFileCommand('OUTPUT', prepareKeyValueMessage(name, value));
+        return file_command_issueFileCommand('OUTPUT', file_command_prepareKeyValueMessage(name, value));
     }
-    process.stdout.write(os.EOL);
-    issueCommand('set-output', { name }, toCommandValue(value));
+    process.stdout.write(external_os_namespaceObject.EOL);
+    command_issueCommand('set-output', { name }, utils_toCommandValue(value));
 }
 /**
  * Enables or disables the echoing of commands into stdout for the rest of the step.
@@ -32039,178 +32039,6 @@ function writeStepSummary(markdown) {
     }
 }
 // -----------------------------------------------------------------------------
-// Diagnostic details (collapsible <details> block)
-// -----------------------------------------------------------------------------
-/**
- * Renders a detailed diagnostic `<details>` block for the step summary.
- * Includes bucket summary, poll timeline with quiet-poll gap rows, and
- * window crossing details.
- *
- * Intended to be called from post.ts after state is finalized (final poll
- * done, markStopped called) so the data is complete.
- */
-function renderDiagnostics(state, pollLog) {
-    const sections = [
-        renderDiagMetadata(state),
-        renderDiagBucketSummary(state),
-        renderDiagTimeline(pollLog),
-        renderDiagWindowCrossings(pollLog),
-    ].filter(Boolean);
-    const body = sections.join('\n');
-    return [
-        '<details>',
-        '<summary><strong>Diagnostic Details</strong></summary>',
-        '',
-        body,
-        '</details>',
-        '',
-    ].join('\n');
-}
-function formatISOTime(iso) {
-    return new Date(iso).toISOString().slice(11, 19) + ' UTC';
-}
-function renderDiagMetadata(state) {
-    const lines = [];
-    lines.push('#### Monitor Metadata');
-    lines.push('');
-    lines.push(`- **Started:** ${state.started_at_ts}`);
-    lines.push(`- **Stopped:** ${state.stopped_at_ts ?? '(still running)'}`);
-    lines.push(`- **Polls:** ${state.poll_count} successful, ${state.poll_failures} failed`);
-    if (state.last_error) {
-        lines.push(`- **Last error:** ${state.last_error}`);
-    }
-    lines.push('');
-    return lines.join('\n');
-}
-function renderDiagBucketSummary(state) {
-    const lines = [];
-    lines.push('#### Bucket Summary');
-    lines.push('');
-    lines.push('| Bucket | Used (start) | Used (end) | Used in job | Remaining (start) | Remaining (end) | Windows crossed |');
-    lines.push('|--------|------------:|----------:|-----------:|-----------------:|---------------:|:--------------:|');
-    const entries = Object.entries(state.buckets)
-        .filter(([, b]) => b.total_used > 0 || b.windows_crossed > 0)
-        .sort((a, b) => b[1].total_used - a[1].total_used);
-    if (entries.length === 0) {
-        lines.push('| *(no active buckets)* | | | | | | |');
-    }
-    for (const [name, bucket] of entries) {
-        const firstUsed = bucket.first_used ?? '?';
-        const firstRemaining = bucket.first_remaining ?? '?';
-        lines.push(`| ${name} | ${firstUsed} | ${bucket.last_used} | ${bucket.total_used} | ${firstRemaining} | ${bucket.remaining} | ${bucket.windows_crossed} |`);
-    }
-    lines.push('');
-    return lines.join('\n');
-}
-function renderDiagTimeline(pollLog) {
-    if (pollLog.length === 0) {
-        return '*No poll log available.*\n';
-    }
-    const lines = [];
-    lines.push('#### Poll Timeline');
-    lines.push('');
-    lines.push('| # | Time | Bucket | Used | Remaining | Delta | Event |');
-    lines.push('|--:|------|--------|-----:|----------:|------:|-------|');
-    let lastEmittedPoll = 0;
-    for (const entry of pollLog) {
-        const time = formatISOTime(entry.timestamp);
-        const bucketEntries = Object.entries(entry.buckets);
-        if (bucketEntries.length === 0) {
-            emitGapRow(lines, lastEmittedPoll, entry.poll_number);
-            lines.push(`| ${entry.poll_number} | ${time} | *(empty)* | | | | |`);
-            lastEmittedPoll = entry.poll_number;
-            continue;
-        }
-        const hasInteresting = bucketEntries.some(([, snap]) => entry.poll_number === 1 || snap.delta > 0 || snap.window_crossed || snap.anomaly);
-        if (!hasInteresting)
-            continue;
-        emitGapRow(lines, lastEmittedPoll, entry.poll_number);
-        let firstBucketInPoll = true;
-        for (const [name, snap] of bucketEntries) {
-            const isInteresting = entry.poll_number === 1 || snap.delta > 0 || snap.window_crossed || snap.anomaly;
-            if (!isInteresting)
-                continue;
-            const event = [];
-            if (entry.poll_number === 1)
-                event.push('baseline');
-            if (snap.window_crossed)
-                event.push('**window crossed**');
-            if (snap.anomaly)
-                event.push('anomaly');
-            if (snap.delta > 0 && !snap.window_crossed && entry.poll_number > 1)
-                event.push(`+${snap.delta}`);
-            const pollNum = firstBucketInPoll ? String(entry.poll_number) : '';
-            const timeCol = firstBucketInPoll ? time : '';
-            firstBucketInPoll = false;
-            lines.push(`| ${pollNum} | ${timeCol} | ${name} | ${snap.used} | ${snap.remaining} | ${snap.delta} | ${event.join(', ') || '-'} |`);
-        }
-        lastEmittedPoll = entry.poll_number;
-    }
-    // Trailing quiet-poll gap
-    if (pollLog.length > 0) {
-        const lastPoll = pollLog[pollLog.length - 1].poll_number;
-        if (lastPoll > lastEmittedPoll) {
-            const gapStart = lastEmittedPoll + 1;
-            const count = lastPoll - gapStart + 1;
-            const range = gapStart === lastPoll ? String(gapStart) : `${gapStart}\u2013${lastPoll}`;
-            lines.push(`| ${range} | | *(no activity \u2014 ${count} poll${count > 1 ? 's' : ''})* | | | | |`);
-        }
-    }
-    lines.push('');
-    return lines.join('\n');
-}
-/** Insert a quiet-poll gap summary row if there's a gap before currentPoll. */
-function emitGapRow(lines, lastEmittedPoll, currentPoll) {
-    if (currentPoll - lastEmittedPoll <= 1)
-        return;
-    const gapStart = lastEmittedPoll + 1;
-    const gapEnd = currentPoll - 1;
-    if (gapStart > gapEnd)
-        return;
-    const count = gapEnd - gapStart + 1;
-    const range = gapStart === gapEnd ? String(gapStart) : `${gapStart}\u2013${gapEnd}`;
-    lines.push(`| ${range} | | *(no activity \u2014 ${count} poll${count > 1 ? 's' : ''})* | | | | |`);
-}
-function renderDiagWindowCrossings(pollLog) {
-    const crossings = [];
-    for (let i = 0; i < pollLog.length; i++) {
-        const entry = pollLog[i];
-        for (const [name, snap] of Object.entries(entry.buckets)) {
-            if (snap.window_crossed) {
-                let prevSnap = null;
-                for (let j = i - 1; j >= 0; j--) {
-                    const prev = pollLog[j].buckets[name];
-                    if (prev) {
-                        prevSnap = prev;
-                        break;
-                    }
-                }
-                crossings.push({
-                    bucket: name,
-                    poll_number: entry.poll_number,
-                    timestamp: entry.timestamp,
-                    before: prevSnap,
-                    after: snap,
-                });
-            }
-        }
-    }
-    if (crossings.length === 0)
-        return '';
-    const lines = [];
-    lines.push('#### Window Crossings');
-    lines.push('');
-    for (const c of crossings) {
-        lines.push(`**${c.bucket}** \u2014 detected at poll #${c.poll_number} (${formatISOTime(c.timestamp)})`);
-        if (c.before) {
-            lines.push(`- Before: used=${c.before.used}, remaining=${c.before.remaining}, reset=${formatResetTime(c.before.reset)}`);
-        }
-        lines.push(`- After: used=${c.after.used}, remaining=${c.after.remaining}, reset=${formatResetTime(c.after.reset)}`);
-        lines.push('');
-    }
-    return lines.join('\n');
-}
-// -----------------------------------------------------------------------------
 // Warning generation
 // -----------------------------------------------------------------------------
 /**
@@ -32365,10 +32193,10 @@ async function handlePost() {
     // Output
     info(consoleText);
     writeStepSummary(markdown);
-    // Append detailed diagnostic <details> block (poll timeline, bucket summary, etc.)
+    // Expose finalized state and poll log as action outputs for downstream diagnostics jobs
     const pollLog = readPollLog();
-    const diagnosticsMarkdown = renderDiagnostics(finalState, pollLog);
-    writeStepSummary(diagnosticsMarkdown);
+    setOutput('state_json', JSON.stringify(finalState));
+    setOutput('poll_log_json', JSON.stringify(pollLog));
     info('Monitor stopped');
 }
 // -----------------------------------------------------------------------------

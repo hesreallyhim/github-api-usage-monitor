@@ -12,7 +12,11 @@ inputs:
     required: false
     default: ${{ github.token }}
 
-outputs: {}
+outputs:
+  state_json:
+    description: 'Finalized reducer state as a JSON string'
+  poll_log_json:
+    description: 'Poll log entries as a JSON array string'
 
 runs:
   using: node20

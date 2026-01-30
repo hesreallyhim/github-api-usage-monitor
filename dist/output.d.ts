@@ -7,7 +7,7 @@
  *
  * Generates summary for GitHub step summary and console.
  */
-import type { SummaryData, ReducerState, PollLogEntry } from './types';
+import type { SummaryData, ReducerState } from './types';
 export interface RenderResult {
     /** Markdown for step summary */
     markdown: string;
@@ -32,15 +32,6 @@ export declare function renderConsole(data: SummaryData): string;
  * Writes markdown to GitHub step summary.
  */
 export declare function writeStepSummary(markdown: string): void;
-/**
- * Renders a detailed diagnostic `<details>` block for the step summary.
- * Includes bucket summary, poll timeline with quiet-poll gap rows, and
- * window crossing details.
- *
- * Intended to be called from post.ts after state is finalized (final poll
- * done, markStopped called) so the data is complete.
- */
-export declare function renderDiagnostics(state: ReducerState, pollLog: PollLogEntry[]): string;
 /**
  * Generates warnings based on state analysis.
  */

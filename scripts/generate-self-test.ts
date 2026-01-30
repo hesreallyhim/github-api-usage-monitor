@@ -185,10 +185,14 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
   if (previousId !== null) {
     lines.push(`  needs: [${previousId}]`);
   }
+  lines.push(`  outputs:`);
+  lines.push(`    state_json: \${{ steps.monitor.outputs.state_json }}`);
+  lines.push(`    poll_log_json: \${{ steps.monitor.outputs.poll_log_json }}`);
   lines.push(`  steps:`);
   lines.push(`    - uses: actions/checkout@v4`);
   lines.push(``);
   lines.push(`    - name: Start monitor`);
+  lines.push(`      id: monitor`);
   lines.push(`      uses: hesreallyhim/github-api-usage-monitor@main`);
   lines.push(`      with:`);
   lines.push(`        token: \${{ secrets.GITHUB_TOKEN }}`);
@@ -254,10 +258,40 @@ function generateJob(scenario: Scenario, previousId: string | null): string {
     lines.push(`        PYEOF`);
   }
 
-  // NOTE: Diagnostic details (poll timeline, window crossings, bucket summary)
-  // are NOT rendered here. These steps run before post.ts, so state.json is
-  // incomplete (missing final poll, stopped_at_ts). Detailed diagnostics
-  // should be rendered in post.ts where the state is finalized.
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Per-scenario diagnostics job generation
+// ---------------------------------------------------------------------------
+
+function generateDiagnosticsJob(scenario: Scenario): string {
+  const diagId = `${scenario.id}-diag`;
+  const lines: string[] = [];
+
+  lines.push(`${diagId}:`);
+  lines.push(`  runs-on: ubuntu-latest`);
+  lines.push(`  needs: [${scenario.id}]`);
+  lines.push(`  if: always()`);
+  lines.push(`  steps:`);
+  lines.push(`    - uses: actions/checkout@v4`);
+  lines.push(``);
+  lines.push(`    - name: Render diagnostics`);
+  lines.push(`      env:`);
+  lines.push(`        STATE_JSON: \${{ needs.${scenario.id}.outputs.state_json }}`);
+  lines.push(`        POLL_LOG_JSON: \${{ needs.${scenario.id}.outputs.poll_log_json }}`);
+  lines.push(`        SCENARIO_NAME: "${yamlEscape(scenario.name)}"`);
+  lines.push(`      run: |`);
+  lines.push(`        node -e "`);
+  lines.push(`          const fs = require('fs');`);
+  lines.push(`          fs.mkdirSync('/tmp/diag', {recursive: true});`);
+  lines.push(`          fs.writeFileSync('/tmp/diag/state.json', process.env.STATE_JSON || '{}');`);
+  lines.push(`          const log = JSON.parse(process.env.POLL_LOG_JSON || '[]');`);
+  lines.push(`          fs.writeFileSync('/tmp/diag/poll-log.jsonl',`);
+  lines.push(`            log.map(e => JSON.stringify(e)).join('\\n'));`);
+  lines.push(`        "`);
+  lines.push(`        STATE_DIR=/tmp/diag SCENARIO_NAME="$SCENARIO_NAME" \\`);
+  lines.push(`          node scripts/render-diagnostics.mjs >> "$GITHUB_STEP_SUMMARY"`);
 
   return lines.join("\n");
 }
@@ -291,7 +325,9 @@ jobs:`;
 
   for (const scenario of SCENARIOS) {
     jobBlocks.push(indent(generateJob(scenario, previousId), 2));
-    previousId = scenario.id;
+    jobBlocks.push(indent(generateDiagnosticsJob(scenario), 2));
+    // Next scenario depends on the diagnostics job completing
+    previousId = `${scenario.id}-diag`;
   }
 
   return header + "\n" + jobBlocks.join("\n\n") + "\n";
@@ -313,9 +349,10 @@ function main(): void {
   // Print summary
   console.log(`Generated: ${outputPath}`);
   console.log(`Scenarios: ${SCENARIOS.length}`);
+  console.log(`Jobs: ${SCENARIOS.length * 2} (${SCENARIOS.length} scenarios + ${SCENARIOS.length} diagnostics)`);
   console.log(`Job IDs:`);
   for (const s of SCENARIOS) {
-    console.log(`  - ${s.id} ("${s.name}")`);
+    console.log(`  - ${s.id} → ${s.id}-diag`);
   }
 }
 

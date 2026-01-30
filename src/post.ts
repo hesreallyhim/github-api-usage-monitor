@@ -18,7 +18,7 @@ import { killPollerWithVerification } from './poller';
 import { readState, writeState, readPid, removePid } from './state';
 import { markStopped, reduce } from './reducer';
 import { fetchRateLimit } from './github';
-import { render, renderDiagnostics, writeStepSummary, generateWarnings } from './output';
+import { render, writeStepSummary, generateWarnings } from './output';
 import { readPollLog } from './poll-log';
 
 // -----------------------------------------------------------------------------
@@ -137,10 +137,10 @@ async function handlePost(): Promise<void> {
   core.info(consoleText);
   writeStepSummary(markdown);
 
-  // Append detailed diagnostic <details> block (poll timeline, bucket summary, etc.)
+  // Expose finalized state and poll log as action outputs for downstream diagnostics jobs
   const pollLog = readPollLog();
-  const diagnosticsMarkdown = renderDiagnostics(finalState, pollLog);
-  writeStepSummary(diagnosticsMarkdown);
+  core.setOutput('state_json', JSON.stringify(finalState));
+  core.setOutput('poll_log_json', JSON.stringify(pollLog));
 
   core.info('Monitor stopped');
 }
