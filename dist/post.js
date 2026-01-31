@@ -27593,6 +27593,1630 @@ module.exports = {
 
 /***/ }),
 
+/***/ 9248:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   AD: () => (/* binding */ fetchRateLimit)
+/* harmony export */ });
+/* unused harmony exports isValidSample, parseRateLimitResponse */
+/* harmony import */ var _types__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(6141);
+/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(1798);
+/**
+ * GitHub API Client
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - github.fetchRateLimit
+ *
+ * Fetches rate limit data from the GitHub API.
+ */
+
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+const RATE_LIMIT_URL = 'https://api.github.com/rate_limit';
+const USER_AGENT = 'github-api-usage-monitor/1.0';
+/**
+ * Fetches rate limit data from GitHub API.
+ *
+ * @param token - GitHub token for authentication
+ * @returns Rate limit response or error
+ */
+async function fetchRateLimit(token) {
+    const timestamp = new Date().toISOString();
+    // Set up abort controller with timeout to prevent indefinite hangs
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), _types__WEBPACK_IMPORTED_MODULE_0__/* .FETCH_TIMEOUT_MS */ .MT);
+    try {
+        const response = await fetch(RATE_LIMIT_URL, {
+            signal: controller.signal,
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.github+json',
+                'User-Agent': USER_AGENT,
+                'X-GitHub-Api-Version': '2022-11-28',
+            },
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            const statusText = response.statusText || 'Unknown error';
+            return {
+                success: false,
+                error: `HTTP ${response.status}: ${statusText}`,
+                timestamp,
+            };
+        }
+        const raw = await response.json();
+        const parsed = parseRateLimitResponse(raw);
+        if (!parsed) {
+            return {
+                success: false,
+                error: 'Failed to parse rate limit response',
+                timestamp,
+            };
+        }
+        return {
+            success: true,
+            data: parsed,
+            timestamp,
+        };
+    }
+    catch (err) {
+        clearTimeout(timeoutId);
+        const error = err;
+        // Handle abort error specifically (timeout)
+        if (error.name === 'AbortError') {
+            return {
+                success: false,
+                error: `Request timeout: GitHub API did not respond within ${_types__WEBPACK_IMPORTED_MODULE_0__/* .FETCH_TIMEOUT_MS */ .MT}ms`,
+                timestamp,
+            };
+        }
+        return {
+            success: false,
+            error: `Network error: ${error.message}`,
+            timestamp,
+        };
+    }
+}
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+/**
+ * Validates that a sample has the expected shape.
+ * Used for defensive parsing.
+ */
+function isValidSample(sample) {
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .isARealObject */ .PU)(sample)) {
+        return false;
+    }
+    const requiredFields = ['limit', 'used', 'remaining', 'reset'];
+    return requiredFields.every((field) => typeof sample[field] === 'number');
+}
+/**
+ * Parses raw API response into typed RateLimitResponse.
+ * Returns null if parsing fails.
+ */
+function parseRateLimitResponse(raw) {
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .isARealObject */ .PU)(raw) || !(0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .isARealObject */ .PU)(raw['resources'])) {
+        return null;
+    }
+    const resources = {};
+    for (const [key, value] of Object.entries(raw['resources'])) {
+        if (!isValidSample(value)) {
+            continue; // Skip invalid resources instead of failing the entire response
+        }
+        resources[key] = value;
+    }
+    // Use rate if valid, otherwise fall back to resources.core
+    const rawRate = raw['rate'];
+    if (isValidSample(rawRate)) {
+        return { resources, rate: rawRate };
+    }
+    const coreResource = resources['core'];
+    if (coreResource) {
+        return { resources, rate: coreResource };
+    }
+    return null;
+}
+
+
+/***/ }),
+
+/***/ 6202:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   Lq: () => (/* binding */ generateWarnings),
+/* harmony export */   XX: () => (/* binding */ render),
+/* harmony export */   oG: () => (/* binding */ writeStepSummary)
+/* harmony export */ });
+/* unused harmony exports renderMarkdown, renderConsole */
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(9896);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(fs__WEBPACK_IMPORTED_MODULE_0__);
+/**
+ * Output Renderer
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - output.render
+ *
+ * Generates summary for GitHub step summary and console.
+ */
+
+/**
+ * Renders the summary data to markdown and console formats.
+ *
+ * @param data - Summary data to render
+ */
+function render(data) {
+    const markdown = renderMarkdown(data);
+    const consoleText = renderConsole(data);
+    return { markdown, console: consoleText };
+}
+// -----------------------------------------------------------------------------
+// Markdown rendering
+// -----------------------------------------------------------------------------
+/**
+ * Renders full markdown summary for $GITHUB_STEP_SUMMARY.
+ */
+function renderMarkdown(data) {
+    const { state, duration_seconds, warnings } = data;
+    const lines = [];
+    // Header
+    lines.push('## GitHub API Usage (Monitor) — Job Summary');
+    lines.push('');
+    // Duration and poll info
+    const duration = formatDuration(duration_seconds);
+    lines.push(`**Duration:** ${duration} | **Polls:** ${state.poll_count} | **Failures:** ${state.poll_failures}`);
+    lines.push('');
+    // Bucket table — only show buckets with actual usage
+    const activeBuckets = getActiveBuckets(state);
+    if (activeBuckets.length > 0) {
+        lines.push('| Bucket | Used (job) | Windows | Remaining | Resets at (UTC) |');
+        lines.push('|--------|----------:|--------:|----------:|-----------------|');
+        for (const [name, bucket] of activeBuckets) {
+            const resetTime = formatResetTime(bucket.last_reset);
+            lines.push(`| ${name} | ${bucket.total_used} | ${bucket.windows_crossed} | ${bucket.remaining} | ${resetTime} |`);
+        }
+        lines.push('');
+    }
+    else {
+        lines.push('*No API usage detected during this job.*');
+        lines.push('');
+    }
+    // Warnings
+    if (warnings.length > 0) {
+        lines.push('### Warnings');
+        lines.push('');
+        for (const warning of warnings) {
+            lines.push(`- ${warning}`);
+        }
+        lines.push('');
+    }
+    return lines.join('\n');
+}
+// -----------------------------------------------------------------------------
+// Console rendering
+// -----------------------------------------------------------------------------
+/**
+ * Renders concise console output.
+ */
+function renderConsole(data) {
+    const { state, duration_seconds, warnings } = data;
+    const lines = [];
+    // One-line summary
+    const duration = formatDuration(duration_seconds);
+    const totalUsed = Object.values(state.buckets).reduce((sum, b) => sum + b.total_used, 0);
+    lines.push(`GitHub API Usage: ${totalUsed} requests in ${duration} (${state.poll_count} polls)`);
+    // Top 3 buckets
+    const buckets = getSortedBuckets(state).slice(0, 3);
+    if (buckets.length > 0) {
+        lines.push('Top buckets:');
+        for (const [name, bucket] of buckets) {
+            lines.push(`  - ${name}: ${bucket.total_used} used, ${bucket.remaining} remaining`);
+        }
+    }
+    // Warnings (abbreviated)
+    if (warnings.length > 0) {
+        lines.push(`Warnings: ${warnings.length}`);
+    }
+    return lines.join('\n');
+}
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+/**
+ * Returns buckets sorted by total_used descending.
+ */
+function getSortedBuckets(state) {
+    return Object.entries(state.buckets).sort((a, b) => b[1].total_used - a[1].total_used);
+}
+/**
+ * Returns only buckets with actual usage (total_used > 0), sorted by total_used descending.
+ * Idle buckets (total_used = 0) are filtered out to keep the summary clean.
+ */
+function getActiveBuckets(state) {
+    return getSortedBuckets(state).filter(([, bucket]) => bucket.total_used > 0);
+}
+/**
+ * Formats duration in human-readable form.
+ */
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${seconds}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (minutes < 60) {
+        return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+/**
+ * Formats reset epoch as UTC timestamp.
+ */
+function formatResetTime(epoch) {
+    return new Date(epoch * 1000).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
+}
+// -----------------------------------------------------------------------------
+// GitHub Step Summary
+// -----------------------------------------------------------------------------
+/**
+ * Writes markdown to GitHub step summary.
+ */
+function writeStepSummary(markdown) {
+    const summaryPath = process.env['GITHUB_STEP_SUMMARY'];
+    if (summaryPath) {
+        fs__WEBPACK_IMPORTED_MODULE_0__.appendFileSync(summaryPath, markdown + '\n');
+    }
+}
+// -----------------------------------------------------------------------------
+// Warning generation
+// -----------------------------------------------------------------------------
+/**
+ * Generates warnings based on state analysis.
+ */
+function generateWarnings(state) {
+    const warnings = [];
+    // Poll failures
+    if (state.poll_failures > 0) {
+        warnings.push(`${state.poll_failures} poll(s) failed during monitoring`);
+    }
+    // Anomalies
+    const totalAnomalies = Object.values(state.buckets).reduce((sum, b) => sum + b.anomalies, 0);
+    if (totalAnomalies > 0) {
+        warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset)`);
+    }
+    // Multiple window crosses (only for active buckets — idle buckets rotate windows harmlessly)
+    for (const [name, bucket] of Object.entries(state.buckets)) {
+        if (bucket.windows_crossed > 1 && bucket.total_used > 0) {
+            warnings.push(`${name} window crossed ${bucket.windows_crossed} times; totals are interval-bounded`);
+        }
+    }
+    // Last error
+    if (state.last_error) {
+        warnings.push(`Last error: ${state.last_error}`);
+    }
+    return warnings;
+}
+
+
+/***/ }),
+
+/***/ 8431:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   Dy: () => (/* binding */ getStatePath),
+/* harmony export */   Rv: () => (/* binding */ getPollLogPath),
+/* harmony export */   YI: () => (/* binding */ getStateTmpPath),
+/* harmony export */   hj: () => (/* binding */ getStateDir),
+/* harmony export */   xD: () => (/* binding */ getPidPath)
+/* harmony export */ });
+/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(6928);
+/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(path__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _types__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6141);
+/**
+ * Path Resolver
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - paths.statePath
+ *   - paths.pidPath
+ *
+ * Resolves paths within $RUNNER_TEMP for state persistence.
+ */
+
+
+// -----------------------------------------------------------------------------
+// Port: paths.statePath
+// -----------------------------------------------------------------------------
+/**
+ * Returns the absolute path to the state directory.
+ * Creates the path string only; does not create the directory.
+ *
+ * @throws Error if RUNNER_TEMP is not set
+ */
+function getStateDir() {
+    const runnerTemp = process.env['RUNNER_TEMP'];
+    if (!runnerTemp) {
+        throw new Error('RUNNER_TEMP environment variable is not set');
+    }
+    return path__WEBPACK_IMPORTED_MODULE_0__.join(runnerTemp, _types__WEBPACK_IMPORTED_MODULE_1__/* .STATE_DIR_NAME */ .Ky);
+}
+/**
+ * Returns the absolute path to state.json
+ */
+function getStatePath() {
+    return path__WEBPACK_IMPORTED_MODULE_0__.join(getStateDir(), _types__WEBPACK_IMPORTED_MODULE_1__/* .STATE_FILE_NAME */ .fZ);
+}
+// -----------------------------------------------------------------------------
+// Port: paths.pidPath
+// -----------------------------------------------------------------------------
+/**
+ * Returns the absolute path to poller.pid
+ */
+function getPidPath() {
+    return path__WEBPACK_IMPORTED_MODULE_0__.join(getStateDir(), _types__WEBPACK_IMPORTED_MODULE_1__/* .PID_FILE_NAME */ .Jm);
+}
+// -----------------------------------------------------------------------------
+// Port: paths.pollLogPath
+// -----------------------------------------------------------------------------
+/**
+ * Returns the absolute path to poll-log.jsonl
+ */
+function getPollLogPath() {
+    return path__WEBPACK_IMPORTED_MODULE_0__.join(getStateDir(), _types__WEBPACK_IMPORTED_MODULE_1__/* .POLL_LOG_FILE_NAME */ .W5);
+}
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+/**
+ * Returns the path for atomic write temporary file
+ */
+function getStateTmpPath() {
+    return path__WEBPACK_IMPORTED_MODULE_0__.join(getStateDir(), `${_types__WEBPACK_IMPORTED_MODULE_1__/* .STATE_FILE_NAME */ .fZ}.tmp`);
+}
+
+
+/***/ }),
+
+/***/ 3728:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   TT: () => (/* binding */ isSupported)
+/* harmony export */ });
+/* unused harmony exports detect, assertSupported */
+/* harmony import */ var os__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(857);
+/* harmony import */ var os__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(os__WEBPACK_IMPORTED_MODULE_0__);
+/**
+ * Platform Detection
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - platform.isSupported
+ *   - platform.detect
+ *
+ * Detects the current platform and validates support for v1.
+ * v1 supports Linux and macOS GitHub-hosted runners only.
+ */
+
+// -----------------------------------------------------------------------------
+// Port: platform.detect
+// -----------------------------------------------------------------------------
+/**
+ * Detects the current platform.
+ */
+function detect() {
+    const platform = os__WEBPACK_IMPORTED_MODULE_0__.platform();
+    switch (platform) {
+        case 'linux':
+            return 'linux';
+        case 'darwin':
+            return 'darwin';
+        case 'win32':
+            return 'win32';
+        default:
+            return 'unknown';
+    }
+}
+// -----------------------------------------------------------------------------
+// Port: platform.isSupported
+// -----------------------------------------------------------------------------
+/**
+ * Checks if the current platform is supported for v1.
+ * Returns detailed info including reason if unsupported.
+ */
+function isSupported() {
+    const platform = detect();
+    switch (platform) {
+        case 'linux':
+            return { platform, supported: true };
+        case 'darwin':
+            return { platform, supported: true };
+        case 'win32':
+            return {
+                platform,
+                supported: false,
+                reason: 'Windows is not supported in v1. Background process lifecycle differs from POSIX systems.',
+            };
+        default:
+            return {
+                platform,
+                supported: false,
+                reason: `Unknown platform: ${os__WEBPACK_IMPORTED_MODULE_0__.platform()}. Only Linux and macOS are supported.`,
+            };
+    }
+}
+/**
+ * Validates platform and throws if unsupported.
+ * Use this for fail-fast behavior in start mode.
+ */
+function assertSupported() {
+    const info = isSupported();
+    if (!info.supported) {
+        throw new Error(`Unsupported platform: ${info.reason}`);
+    }
+}
+
+
+/***/ }),
+
+/***/ 2233:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   Y: () => (/* binding */ readPollLog)
+/* harmony export */ });
+/* unused harmony export appendPollLogEntry */
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(9896);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(fs__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _paths__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(8431);
+/**
+ * Poll Log
+ * Layer: infra
+ *
+ * Provided ports:
+ *   - pollLog.append
+ *
+ * Append-only JSONL diagnostic log of per-poll snapshots.
+ * Each line is a self-contained JSON object (PollLogEntry).
+ * Used by self-test diagnostics for detailed debugging;
+ * the main action summary (output.ts) does not read this file.
+ */
+
+
+// -----------------------------------------------------------------------------
+// Port: pollLog.append
+// -----------------------------------------------------------------------------
+/**
+ * Appends a single poll log entry as a JSON line to the poll log file.
+ * Creates the file if it does not exist.
+ *
+ * Best-effort: swallows write errors so the poller is never disrupted
+ * by diagnostic logging failures.
+ */
+function appendPollLogEntry(entry) {
+    try {
+        const line = JSON.stringify(entry) + '\n';
+        fs.appendFileSync(getPollLogPath(), line, 'utf-8');
+    }
+    catch {
+        // Diagnostic-only — never disrupt the poller
+    }
+}
+// -----------------------------------------------------------------------------
+// Port: pollLog.read
+// -----------------------------------------------------------------------------
+/**
+ * Reads all poll log entries from the JSONL file.
+ * Returns an empty array if the file does not exist or is unreadable.
+ */
+function readPollLog() {
+    try {
+        const path = (0,_paths__WEBPACK_IMPORTED_MODULE_1__/* .getPollLogPath */ .Rv)();
+        if (!fs__WEBPACK_IMPORTED_MODULE_0__.existsSync(path))
+            return [];
+        const content = fs__WEBPACK_IMPORTED_MODULE_0__.readFileSync(path, 'utf-8');
+        return content
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+    }
+    catch {
+        return [];
+    }
+}
+
+
+/***/ }),
+
+/***/ 8105:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   UD: () => (/* binding */ killPollerWithVerification)
+/* harmony export */ });
+/* unused harmony exports spawnPoller, killPoller, computeSleepPlan, POLL_DEBOUNCE_MS, applyDebounce, main */
+/* harmony import */ var child_process__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(5317);
+/* harmony import */ var child_process__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(child_process__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6928);
+/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(path__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var _state__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(2462);
+/* harmony import */ var _poll_log__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(2233);
+/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(1798);
+/**
+ * Poller Process
+ * Layer: poller
+ *
+ * Provided ports:
+ *   - poller.spawn
+ *   - poller.kill
+ *
+ * Background process that polls /rate_limit and updates state.
+ * Runs as a detached child process.
+ *
+ * When run directly (as child process entry):
+ *   - Reads config from environment
+ *   - Polls at interval
+ *   - Updates state file atomically
+ *   - Handles SIGTERM for graceful shutdown
+ */
+
+
+
+
+
+
+
+
+/**
+ * Spawns the poller as a detached background process.
+ *
+ * @param token - GitHub token for API calls
+ * @returns PID of spawned process or error
+ */
+function spawnPoller(token) {
+    try {
+        // Resolve path to bundled poller entry
+        // ncc bundles to dist/poller/index.js
+        const actionPath = process.env['GITHUB_ACTION_PATH'];
+        const baseDir = actionPath
+            ? path.resolve(actionPath, 'dist')
+            : path.dirname(process.argv[1] ?? '');
+        const pollerEntry = path.join(baseDir, 'poller', 'index.js');
+        const child = spawn(process.execPath, [pollerEntry], {
+            detached: true,
+            stdio: 'ignore',
+            env: {
+                ...process.env,
+                GITHUB_API_MONITOR_TOKEN: token,
+                GITHUB_API_MONITOR_INTERVAL: String(POLL_INTERVAL_SECONDS),
+            },
+        });
+        // Allow parent to exit without waiting
+        child.unref();
+        if (!child.pid) {
+            return { success: false, error: 'Failed to get child PID' };
+        }
+        return { success: true, pid: child.pid };
+    }
+    catch (err) {
+        const error = err;
+        return { success: false, error: `Failed to spawn poller: ${error.message}` };
+    }
+}
+const KILL_TIMEOUT_MS = 3000;
+const KILL_CHECK_INTERVAL_MS = 100;
+/**
+ * Kills the poller process by PID.
+ * Sends SIGTERM for graceful shutdown.
+ *
+ * @param pid - Process ID to kill
+ */
+function killPoller(pid) {
+    try {
+        // Check if process exists
+        process.kill(pid, 0);
+        // Send SIGTERM
+        process.kill(pid, 'SIGTERM');
+        return { success: true };
+    }
+    catch (err) {
+        const error = err;
+        if (error.code === 'ESRCH') {
+            return {
+                success: false,
+                error: 'Process not found',
+                notFound: true,
+            };
+        }
+        return {
+            success: false,
+            error: `Failed to kill poller: ${error.message}`,
+            notFound: false,
+        };
+    }
+}
+/**
+ * Kills poller with verification and SIGKILL escalation.
+ * Sends SIGTERM, waits for exit, escalates to SIGKILL if needed.
+ */
+async function killPollerWithVerification(pid) {
+    // Check if process exists
+    if (!isProcessRunning(pid)) {
+        return { success: false, error: 'Process not found', notFound: true };
+    }
+    // Send SIGTERM
+    try {
+        process.kill(pid, 'SIGTERM');
+    }
+    catch (err) {
+        const error = err;
+        if (error.code === 'ESRCH') {
+            return { success: false, error: 'Process not found', notFound: true };
+        }
+        return { success: false, error: `Failed to send SIGTERM: ${error.message}`, notFound: false };
+    }
+    // Wait for process to die
+    const startTime = Date.now();
+    while (Date.now() - startTime < KILL_TIMEOUT_MS) {
+        await (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .sleep */ .yy)(KILL_CHECK_INTERVAL_MS);
+        if (!isProcessRunning(pid)) {
+            return { success: true, escalated: false };
+        }
+    }
+    // Escalate to SIGKILL
+    try {
+        process.kill(pid, 'SIGKILL');
+        await (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .sleep */ .yy)(KILL_CHECK_INTERVAL_MS);
+        if (!isProcessRunning(pid)) {
+            return { success: true, escalated: true };
+        }
+        return { success: false, error: 'Process survived SIGKILL', notFound: false };
+    }
+    catch (err) {
+        const error = err;
+        if (error.code === 'ESRCH') {
+            return { success: true, escalated: true }; // Died between check and kill
+        }
+        return { success: false, error: `Failed to send SIGKILL: ${error.message}`, notFound: false };
+    }
+}
+function isProcessRunning(pid) {
+    try {
+        process.kill(pid, 0);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+const BURST_THRESHOLD_S = 8;
+const PRE_RESET_BUFFER_S = 3;
+const POST_RESET_DELAY_S = 3;
+const MIN_SLEEP_MS = 1000;
+/**
+ * Computes when to poll next based on upcoming bucket resets.
+ *
+ * Instead of a fixed interval, this targets polls just before bucket resets
+ * to minimize the uncertainty window — the gap between the last pre-reset
+ * observation and the actual reset.
+ *
+ * When a reset is imminent (≤8s away), enters "burst mode": two polls
+ * bracket the reset boundary to capture both pre-reset and post-reset state.
+ */
+function computeSleepPlan(state, baseIntervalMs, nowEpochSeconds) {
+    const activeResets = Object.values(state.buckets)
+        .filter((b) => b.total_used > 0)
+        .map((b) => b.last_reset)
+        .filter((r) => r > nowEpochSeconds);
+    if (activeResets.length === 0) {
+        return { sleepMs: baseIntervalMs, burst: false, burstGapMs: 0 };
+    }
+    const soonestReset = Math.min(...activeResets);
+    const secondsUntilReset = soonestReset - nowEpochSeconds;
+    if (secondsUntilReset <= 0) {
+        // Reset already passed — poll quickly to pick up new window
+        return { sleepMs: Math.min(2000, baseIntervalMs), burst: false, burstGapMs: 0 };
+    }
+    if (secondsUntilReset <= BURST_THRESHOLD_S) {
+        // Close to reset — burst mode: poll before and after
+        const preResetSleep = Math.max((secondsUntilReset - PRE_RESET_BUFFER_S) * 1000, MIN_SLEEP_MS);
+        const burstGap = (PRE_RESET_BUFFER_S + POST_RESET_DELAY_S) * 1000;
+        return { sleepMs: preResetSleep, burst: true, burstGapMs: burstGap };
+    }
+    if (secondsUntilReset * 1000 < baseIntervalMs) {
+        // Reset coming before next regular poll — target pre-reset
+        const targetSleep = (secondsUntilReset - PRE_RESET_BUFFER_S) * 1000;
+        return { sleepMs: Math.max(targetSleep, MIN_SLEEP_MS), burst: false, burstGapMs: 0 };
+    }
+    return { sleepMs: baseIntervalMs, burst: false, burstGapMs: 0 };
+}
+// -----------------------------------------------------------------------------
+// Poll debounce
+// -----------------------------------------------------------------------------
+/**
+ * Minimum milliseconds between any two polls.
+ *
+ * Prevents rapid-fire polling when multiple buckets have staggered resets
+ * close together (e.g. three 60s buckets resetting 5s apart). Without this,
+ * each reset triggers its own burst, producing 6 polls in ~15s. The debounce
+ * floors every sleep so back-to-back bursts collapse naturally.
+ *
+ * Tunable independently from computeSleepPlan's reset-targeting logic.
+ */
+const POLL_DEBOUNCE_MS = 5000;
+/**
+ * Applies a minimum-interval debounce to a sleep plan.
+ * Clamps both the initial sleep and the burst gap (if any) so that no
+ * two polls can occur closer than `debounceMs` apart.
+ */
+function applyDebounce(plan, debounceMs) {
+    return {
+        ...plan,
+        sleepMs: Math.max(plan.sleepMs, debounceMs),
+        burstGapMs: plan.burst ? Math.max(plan.burstGapMs, debounceMs) : plan.burstGapMs,
+    };
+}
+// -----------------------------------------------------------------------------
+// Poller main loop (when run as child process)
+// -----------------------------------------------------------------------------
+/**
+ * Main polling loop.
+ * Runs indefinitely until SIGTERM received.
+ *
+ * Startup sequence:
+ *   1. Read or create initial state
+ *   2. Write state immediately (signals "alive" to parent)
+ *   3. Begin polling loop
+ *
+ * Shutdown sequence (SIGTERM):
+ *   1. Write current state immediately
+ *   2. Exit with code 0
+ *
+ * The parent process (main.ts) waits for the state file to confirm
+ * the poller started successfully before proceeding.
+ */
+async function runPollerLoop(token, intervalSeconds) {
+    let state;
+    const startTimeMs = Date.now();
+    // Handle graceful shutdown - write state immediately before exiting
+    process.on('SIGTERM', () => {
+        if (state) {
+            writeState(state);
+        }
+        process.exit(0);
+    });
+    // Initial state or read existing
+    const stateResult = readState();
+    if (stateResult.success) {
+        state = stateResult.state;
+    }
+    else {
+        state = createInitialState();
+    }
+    // Signal alive: set timestamp and write state so parent can detect startup
+    state = { ...state, poller_started_at_ts: new Date().toISOString() };
+    writeState(state);
+    // Initial poll immediately
+    state = await performPoll(state, token);
+    // Polling loop (runs until SIGTERM or max lifetime exceeded)
+    while (true) {
+        // Defense-in-depth: exit if max lifetime exceeded
+        const elapsedMs = Date.now() - startTimeMs;
+        if (elapsedMs >= MAX_LIFETIME_MS) {
+            console.error(`Poller exceeded max lifetime (${MAX_LIFETIME_MS}ms). ` + `Exiting as safety measure.`);
+            state = markStopped(state);
+            writeState(state);
+            process.exit(0);
+        }
+        const rawPlan = computeSleepPlan(state, intervalSeconds * 1000, Math.floor(Date.now() / 1000));
+        const plan = applyDebounce(rawPlan, POLL_DEBOUNCE_MS);
+        await sleep(plan.sleepMs);
+        state = await performPoll(state, token);
+        if (plan.burst) {
+            await sleep(plan.burstGapMs);
+            state = await performPoll(state, token);
+        }
+    }
+}
+/**
+ * Performs a single poll and updates state.
+ */
+async function performPoll(state, token) {
+    const timestamp = new Date().toISOString();
+    const result = await fetchRateLimit(token);
+    if (!result.success) {
+        const newState = recordFailure(state, result.error);
+        writeState(newState);
+        return newState;
+    }
+    const reduceResult = reduce(state, result.data, timestamp);
+    const newState = reduceResult.state;
+    writeState(newState);
+    // Build and append diagnostic poll log entry
+    const bucketSnapshots = {};
+    for (const [name, update] of Object.entries(reduceResult.updates)) {
+        const sample = result.data.resources[name];
+        if (sample) {
+            bucketSnapshots[name] = {
+                used: sample.used,
+                remaining: sample.remaining,
+                reset: sample.reset,
+                limit: sample.limit,
+                delta: update.delta,
+                window_crossed: update.window_crossed,
+                anomaly: update.anomaly,
+            };
+        }
+    }
+    const logEntry = {
+        timestamp,
+        poll_number: newState.poll_count,
+        buckets: bucketSnapshots,
+    };
+    appendPollLogEntry(logEntry);
+    return newState;
+}
+// -----------------------------------------------------------------------------
+// Child process entry point
+// -----------------------------------------------------------------------------
+/**
+ * Entry point when run as child process.
+ * Exported for use by poller-entry.ts
+ */
+async function main() {
+    const token = process.env['GITHUB_API_MONITOR_TOKEN'];
+    const intervalStr = process.env['GITHUB_API_MONITOR_INTERVAL'];
+    if (!token) {
+        console.error('GITHUB_API_MONITOR_TOKEN not set');
+        process.exit(1);
+    }
+    const interval = intervalStr ? parseInt(intervalStr, 10) : POLL_INTERVAL_SECONDS;
+    await runPollerLoop(token, interval);
+}
+// Entry point moved to poller-entry.ts for ESM compatibility
+// See: poller-entry.ts is built as dist/poller/index.js
+
+
+/***/ }),
+
+/***/ 6661:
+/***/ ((module, __unused_webpack___webpack_exports__, __nccwpck_require__) => {
+
+__nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(7909);
+/* harmony import */ var _platform__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(3728);
+/* harmony import */ var _poller__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(8105);
+/* harmony import */ var _state__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(2462);
+/* harmony import */ var _reducer__WEBPACK_IMPORTED_MODULE_8__ = __nccwpck_require__(4807);
+/* harmony import */ var _github__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(9248);
+/* harmony import */ var _output__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(6202);
+/* harmony import */ var _poll_log__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(2233);
+/* harmony import */ var _paths__WEBPACK_IMPORTED_MODULE_6__ = __nccwpck_require__(8431);
+/**
+ * Post Entry
+ * Layer: action
+ *
+ * GitHub Action post entry point for cleanup and reporting.
+ * Runs automatically after job completes (via action.yml post-if: always()).
+ *
+ * Required ports:
+ *   - poller.kill
+ *   - state.read
+ *   - output.render
+ */
+
+
+
+
+
+
+
+
+
+// -----------------------------------------------------------------------------
+// Post entry point
+// -----------------------------------------------------------------------------
+async function run() {
+    try {
+        await handlePost();
+    }
+    catch (error) {
+        const err = error;
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .setFailed */ .C1(err.message);
+    }
+}
+// -----------------------------------------------------------------------------
+// Post handler (cleanup and report)
+// -----------------------------------------------------------------------------
+async function handlePost() {
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq('Stopping GitHub API usage monitor...');
+    const warnings = [];
+    const token = _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .getInput */ .V4('token') || process.env['GITHUB_TOKEN'];
+    if (token) {
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .setSecret */ .Pq(token);
+    }
+    // Check platform (warn but continue)
+    const platformInfo = (0,_platform__WEBPACK_IMPORTED_MODULE_1__/* .isSupported */ .TT)();
+    if (!platformInfo.supported) {
+        warnings.push(`Unsupported platform: ${platformInfo.reason}`);
+    }
+    // Read PID and kill poller with verification
+    const pid = (0,_state__WEBPACK_IMPORTED_MODULE_3__/* .readPid */ .Qs)();
+    if (pid) {
+        const killResult = await (0,_poller__WEBPACK_IMPORTED_MODULE_2__/* .killPollerWithVerification */ .UD)(pid);
+        if (!killResult.success) {
+            if (killResult.notFound) {
+                warnings.push('Poller process not found (may have exited)');
+            }
+            else {
+                warnings.push(`Failed to kill poller: ${killResult.error}`);
+            }
+        }
+        else if (killResult.escalated) {
+            warnings.push('Poller required SIGKILL (did not respond to SIGTERM)');
+        }
+        (0,_state__WEBPACK_IMPORTED_MODULE_3__/* .removePid */ .yz)();
+    }
+    else {
+        warnings.push('No PID file found (monitor may not have started)');
+    }
+    // Read final state
+    const statePath = (0,_paths__WEBPACK_IMPORTED_MODULE_6__/* .getStatePath */ .Dy)();
+    const pollLogPath = (0,_paths__WEBPACK_IMPORTED_MODULE_6__/* .getPollLogPath */ .Rv)();
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`State path: ${statePath}`);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`Poll log path: ${pollLogPath}`);
+    const stateResult = (0,_state__WEBPACK_IMPORTED_MODULE_3__/* .readState */ .un)();
+    if (!stateResult.success) {
+        if (stateResult.notFound) {
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .warning */ .$e('No state file found. Monitor may not have started or state was lost.');
+            const pollLog = (0,_poll_log__WEBPACK_IMPORTED_MODULE_5__/* .readPollLog */ .Y)();
+            const emptyState = {};
+            const stateJson = JSON.stringify(emptyState);
+            const pollLogJson = JSON.stringify(pollLog);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .setOutput */ .uH('state_json', stateJson);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .setOutput */ .uH('poll_log_json', pollLogJson);
+            _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`Outputs set (missing state): state_json bytes=${stateJson.length}, ` +
+                `poll_log_json bytes=${pollLogJson.length}, poll_log entries=${pollLog.length}`);
+            return;
+        }
+        throw new Error(`Failed to read state: ${stateResult.error}`);
+    }
+    // Optional final poll to capture last usage before shutdown
+    let finalState = stateResult.state;
+    if (token) {
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq('Performing final API poll...');
+        const finalPoll = await (0,_github__WEBPACK_IMPORTED_MODULE_7__/* .fetchRateLimit */ .AD)(token);
+        if (finalPoll.success) {
+            const reduceResult = (0,_reducer__WEBPACK_IMPORTED_MODULE_8__/* .reduce */ .TS)(finalState, finalPoll.data, finalPoll.timestamp);
+            finalState = reduceResult.state;
+        }
+        else {
+            warnings.push(`Final poll failed: ${finalPoll.error}`);
+        }
+    }
+    else {
+        warnings.push('No token available for final poll');
+    }
+    // Mark as stopped
+    finalState = (0,_reducer__WEBPACK_IMPORTED_MODULE_8__/* .markStopped */ .fP)(finalState);
+    (0,_state__WEBPACK_IMPORTED_MODULE_3__/* .writeState */ .Jq)(finalState);
+    // Debug: dump per-bucket state for self-test analysis
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq('--- Debug: per-bucket state ---');
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`Poll count: ${finalState.poll_count} | Failures: ${finalState.poll_failures}`);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`Started: ${finalState.started_at_ts} | Stopped: ${finalState.stopped_at_ts}`);
+    for (const [name, bucket] of Object.entries(finalState.buckets)) {
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`  ${name}: first_used=${bucket.first_used}, last_used=${bucket.last_used}, ` +
+            `total_used=${bucket.total_used}, windows_crossed=${bucket.windows_crossed}, ` +
+            `last_reset=${bucket.last_reset}, remaining=${bucket.remaining}, limit=${bucket.limit}`);
+    }
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq('--- End debug ---');
+    // Calculate duration
+    const startTime = new Date(finalState.started_at_ts).getTime();
+    const endTime = finalState.stopped_at_ts
+        ? new Date(finalState.stopped_at_ts).getTime()
+        : Date.now();
+    const durationSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
+    // Generate state-based warnings
+    const stateWarnings = (0,_output__WEBPACK_IMPORTED_MODULE_4__/* .generateWarnings */ .Lq)(finalState);
+    warnings.push(...stateWarnings);
+    // Render output
+    const summaryData = {
+        state: finalState,
+        duration_seconds: durationSeconds,
+        warnings,
+    };
+    const { markdown, console: consoleText } = (0,_output__WEBPACK_IMPORTED_MODULE_4__/* .render */ .XX)(summaryData);
+    // Output
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(consoleText);
+    (0,_output__WEBPACK_IMPORTED_MODULE_4__/* .writeStepSummary */ .oG)(markdown);
+    // Expose finalized state and poll log as action outputs for downstream diagnostics jobs
+    const pollLog = (0,_poll_log__WEBPACK_IMPORTED_MODULE_5__/* .readPollLog */ .Y)();
+    const stateJson = JSON.stringify(finalState);
+    const pollLogJson = JSON.stringify(pollLog);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .setOutput */ .uH('state_json', stateJson);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .setOutput */ .uH('poll_log_json', pollLogJson);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`Outputs set: state_json bytes=${stateJson.length}, ` +
+        `poll_log_json bytes=${pollLogJson.length}, poll_log entries=${pollLog.length}`);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq('Monitor stopped');
+}
+// -----------------------------------------------------------------------------
+// Run
+// -----------------------------------------------------------------------------
+// void run();
+await run();
+
+__webpack_async_result__();
+} catch(e) { __webpack_async_result__(e); } }, 1);
+
+/***/ }),
+
+/***/ 4807:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   TS: () => (/* binding */ reduce),
+/* harmony export */   fP: () => (/* binding */ markStopped)
+/* harmony export */ });
+/* unused harmony exports initBucket, updateBucket, createInitialState, recordFailure */
+/**
+ * Reducer
+ * Layer: core
+ *
+ * Provided ports:
+ *   - reducer.update
+ *   - reducer.initBucket
+ *
+ * Pure business logic for rate-limit reduction.
+ * Maintains constant-space per-bucket state.
+ *
+ * Algorithm (per poll, per bucket):
+ *   if bucket not initialized:
+ *     initialize with current reset/used
+ *   else if reset changed AND used < last_used (genuine window reset):
+ *     windows_crossed += 1
+ *     total_used += used (include post-reset usage)
+ *     last_reset = reset
+ *   else if reset changed AND used >= last_used (timestamp rotation, not a real reset):
+ *     delta = used - last_used
+ *     total_used += delta
+ *     last_reset = reset
+ *   else (same window):
+ *     delta = used - last_used
+ *     if delta < 0: anomaly (do not subtract)
+ *     else: total_used += delta
+ *   last_used = used
+ */
+
+// -----------------------------------------------------------------------------
+// Port: reducer.initBucket
+// -----------------------------------------------------------------------------
+/**
+ * Initializes a new bucket state from the first sample.
+ */
+function initBucket(sample, timestamp) {
+    return {
+        last_reset: sample.reset,
+        last_used: sample.used,
+        total_used: 0, // First sample is baseline, not counted
+        windows_crossed: 0,
+        anomalies: 0,
+        last_seen_ts: timestamp,
+        limit: sample.limit,
+        remaining: sample.remaining,
+        first_used: sample.used,
+        first_remaining: sample.remaining,
+    };
+}
+/**
+ * Updates a bucket state with a new sample.
+ * Pure function - returns new state without mutating input.
+ *
+ * @param bucket - Current bucket state
+ * @param sample - New rate limit sample
+ * @param timestamp - ISO timestamp of observation
+ */
+function updateBucket(bucket, sample, timestamp) {
+    const resetChanged = sample.reset !== bucket.last_reset;
+    const usedDecreased = sample.used < bucket.last_used;
+    // Genuine window reset: reset timestamp changed AND used count dropped.
+    // This means the rate-limit window actually rolled over and the counter reset.
+    if (resetChanged && usedDecreased) {
+        return {
+            bucket: {
+                last_reset: sample.reset,
+                last_used: sample.used,
+                total_used: bucket.total_used + sample.used,
+                windows_crossed: bucket.windows_crossed + 1,
+                anomalies: bucket.anomalies,
+                last_seen_ts: timestamp,
+                limit: sample.limit,
+                remaining: sample.remaining,
+                first_used: bucket.first_used,
+                first_remaining: bucket.first_remaining,
+            },
+            delta: sample.used,
+            anomaly: false,
+            window_crossed: true,
+        };
+    }
+    // Reset timestamp rotated but used didn't drop (e.g. GitHub rotating
+    // timestamps on unused buckets, or continued usage across a boundary).
+    // Treat as a normal delta — update last_reset but don't count a crossing.
+    if (resetChanged) {
+        const delta = sample.used - bucket.last_used;
+        return {
+            bucket: {
+                last_reset: sample.reset,
+                last_used: sample.used,
+                total_used: bucket.total_used + delta,
+                windows_crossed: bucket.windows_crossed,
+                anomalies: bucket.anomalies,
+                last_seen_ts: timestamp,
+                limit: sample.limit,
+                remaining: sample.remaining,
+                first_used: bucket.first_used,
+                first_remaining: bucket.first_remaining,
+            },
+            delta,
+            anomaly: false,
+            window_crossed: false,
+        };
+    }
+    // Same window: calculate delta
+    const delta = sample.used - bucket.last_used;
+    if (delta < 0) {
+        // Anomaly: used decreased without reset change
+        return {
+            bucket: {
+                last_reset: bucket.last_reset,
+                last_used: sample.used,
+                total_used: bucket.total_used,
+                windows_crossed: bucket.windows_crossed,
+                anomalies: bucket.anomalies + 1,
+                last_seen_ts: timestamp,
+                limit: sample.limit,
+                remaining: sample.remaining,
+                first_used: bucket.first_used,
+                first_remaining: bucket.first_remaining,
+            },
+            delta: 0,
+            anomaly: true,
+            window_crossed: false,
+        };
+    }
+    // Normal case: accumulate delta
+    return {
+        bucket: {
+            last_reset: bucket.last_reset,
+            last_used: sample.used,
+            total_used: bucket.total_used + delta,
+            windows_crossed: bucket.windows_crossed,
+            anomalies: bucket.anomalies,
+            last_seen_ts: timestamp,
+            limit: sample.limit,
+            remaining: sample.remaining,
+            first_used: bucket.first_used,
+            first_remaining: bucket.first_remaining,
+        },
+        delta,
+        anomaly: false,
+        window_crossed: false,
+    };
+}
+// -----------------------------------------------------------------------------
+// State factory
+// -----------------------------------------------------------------------------
+/**
+ * Creates initial reducer state.
+ */
+function createInitialState() {
+    return {
+        buckets: {},
+        started_at_ts: new Date().toISOString(),
+        stopped_at_ts: null,
+        poller_started_at_ts: null,
+        interval_seconds: POLL_INTERVAL_SECONDS,
+        poll_count: 0,
+        poll_failures: 0,
+        last_error: null,
+    };
+}
+/**
+ * Processes a full rate limit response and updates state.
+ * Pure function - returns new state without mutating input.
+ *
+ * @param state - Current reducer state
+ * @param response - Rate limit API response
+ * @param timestamp - ISO timestamp of observation
+ */
+function reduce(state, response, timestamp) {
+    const newBuckets = { ...state.buckets };
+    const updates = {};
+    // Process each bucket in the response
+    for (const [name, sample] of Object.entries(response.resources)) {
+        const existingBucket = state.buckets[name];
+        if (!existingBucket) {
+            // New bucket: initialize
+            const bucket = initBucket(sample, timestamp);
+            newBuckets[name] = bucket;
+            updates[name] = {
+                bucket,
+                delta: 0,
+                anomaly: false,
+                window_crossed: false,
+            };
+        }
+        else {
+            // Existing bucket: update
+            const result = updateBucket(existingBucket, sample, timestamp);
+            newBuckets[name] = result.bucket;
+            updates[name] = result;
+        }
+    }
+    return {
+        state: {
+            ...state,
+            buckets: newBuckets,
+            poll_count: state.poll_count + 1,
+        },
+        updates,
+    };
+}
+/**
+ * Records a poll failure in state.
+ * Pure function - returns new state.
+ */
+function recordFailure(state, error) {
+    return {
+        ...state,
+        poll_failures: state.poll_failures + 1,
+        last_error: error,
+    };
+}
+/**
+ * Marks state as stopped.
+ */
+function markStopped(state) {
+    return {
+        ...state,
+        stopped_at_ts: new Date().toISOString(),
+    };
+}
+
+
+/***/ }),
+
+/***/ 2462:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   Jq: () => (/* binding */ writeState),
+/* harmony export */   Qs: () => (/* binding */ readPid),
+/* harmony export */   un: () => (/* binding */ readState),
+/* harmony export */   yz: () => (/* binding */ removePid)
+/* harmony export */ });
+/* unused harmony exports isValidState, writePid, verifyPollerStartup */
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(9896);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(fs__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _paths__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(8431);
+/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(1798);
+/**
+ * State Manager
+ * Layer: core
+ *
+ * Provided ports:
+ *   - state.read
+ *   - state.write
+ *
+ * Manages persistent state in $RUNNER_TEMP.
+ * Uses atomic rename for safe writes.
+ */
+
+
+/**
+ * Reads reducer state from disk.
+ *
+ * @returns State or error with details
+ */
+function readState() {
+    const statePath = (0,_paths__WEBPACK_IMPORTED_MODULE_1__/* .getStatePath */ .Dy)();
+    try {
+        const content = fs__WEBPACK_IMPORTED_MODULE_0__.readFileSync(statePath, 'utf-8');
+        const parsed = JSON.parse(content);
+        if (!isValidState(parsed)) {
+            return {
+                success: false,
+                error: 'Invalid state structure',
+                notFound: false,
+            };
+        }
+        return { success: true, state: parsed };
+    }
+    catch (err) {
+        const error = err;
+        if (error.code === 'ENOENT') {
+            return {
+                success: false,
+                error: 'State file not found',
+                notFound: true,
+            };
+        }
+        return {
+            success: false,
+            error: `Failed to read state: ${error.message}`,
+            notFound: false,
+        };
+    }
+}
+/**
+ * Writes reducer state to disk atomically.
+ * Creates state directory if it doesn't exist.
+ * Cleans up temp file on failure to prevent orphaned files.
+ *
+ * @param state - State to persist
+ */
+function writeState(state) {
+    const stateDir = (0,_paths__WEBPACK_IMPORTED_MODULE_1__/* .getStateDir */ .hj)();
+    const statePath = (0,_paths__WEBPACK_IMPORTED_MODULE_1__/* .getStatePath */ .Dy)();
+    const tmpPath = (0,_paths__WEBPACK_IMPORTED_MODULE_1__/* .getStateTmpPath */ .YI)();
+    try {
+        // Ensure directory exists
+        fs__WEBPACK_IMPORTED_MODULE_0__.mkdirSync(stateDir, { recursive: true });
+        // Write to temp file
+        const content = JSON.stringify(state, null, 2);
+        fs__WEBPACK_IMPORTED_MODULE_0__.writeFileSync(tmpPath, content, 'utf-8');
+        // Atomic rename
+        fs__WEBPACK_IMPORTED_MODULE_0__.renameSync(tmpPath, statePath);
+        return { success: true };
+    }
+    catch (err) {
+        // Clean up temp file on failure to prevent orphaned files
+        try {
+            fs__WEBPACK_IMPORTED_MODULE_0__.unlinkSync(tmpPath);
+        }
+        catch {
+            // Ignore cleanup errors - file may not exist
+        }
+        const error = err;
+        return {
+            success: false,
+            error: `Failed to write state: ${error.message}`,
+        };
+    }
+}
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+/**
+ * Validates that parsed JSON has the ReducerState shape.
+ * Handles missing fields gracefully per spec (W4).
+ */
+function isValidState(obj) {
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isARealObject */ .PU)(obj)) {
+        return false;
+    }
+    // Required fields
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isARealObject */ .PU)(obj['buckets'])) {
+        return false;
+    }
+    if (typeof obj['started_at_ts'] !== 'string') {
+        return false;
+    }
+    if (typeof obj['interval_seconds'] !== 'number') {
+        return false;
+    }
+    if (typeof obj['poll_count'] !== 'number') {
+        return false;
+    }
+    if (typeof obj['poll_failures'] !== 'number') {
+        return false;
+    }
+    // Validate each bucket entry
+    for (const value of Object.values(obj['buckets'])) {
+        if (!isValidBucketState(value)) {
+            return false;
+        }
+    }
+    // Optional fields: must be string | null
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isStringOrNull */ .CO)(obj['stopped_at_ts'])) {
+        return false;
+    }
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isStringOrNull */ .CO)(obj['poller_started_at_ts'])) {
+        return false;
+    }
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isStringOrNull */ .CO)(obj['last_error'])) {
+        return false;
+    }
+    return true;
+}
+/**
+ * Validates that a value has the BucketState shape.
+ */
+function isValidBucketState(value) {
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isARealObject */ .PU)(value)) {
+        return false;
+    }
+    const numericFields = [
+        'last_reset',
+        'last_used',
+        'total_used',
+        'windows_crossed',
+        'anomalies',
+        'limit',
+        'remaining',
+        'first_used',
+        'first_remaining',
+    ];
+    for (const field of numericFields) {
+        if (typeof value[field] !== 'number') {
+            return false;
+        }
+    }
+    if (typeof value['last_seen_ts'] !== 'string') {
+        return false;
+    }
+    return true;
+}
+// -----------------------------------------------------------------------------
+// PID file management
+// -----------------------------------------------------------------------------
+
+
+/**
+ * Writes the poller PID to disk.
+ */
+function writePid(pid) {
+    const pidPath = getPidPath();
+    const stateDir = getStateDir();
+    try {
+        fs.mkdirSync(stateDir, { recursive: true });
+        fs.writeFileSync(pidPath, String(pid), 'utf-8');
+        return { success: true };
+    }
+    catch (err) {
+        const error = err;
+        return {
+            success: false,
+            error: `Failed to write PID: ${error.message}`,
+        };
+    }
+}
+/**
+ * Reads the poller PID from disk.
+ */
+function readPid() {
+    const pidPath = (0,_paths__WEBPACK_IMPORTED_MODULE_1__/* .getPidPath */ .xD)();
+    try {
+        const content = fs__WEBPACK_IMPORTED_MODULE_0__.readFileSync(pidPath, 'utf-8');
+        const pid = parseInt(content.trim(), 10);
+        return isNaN(pid) ? null : pid;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Removes the PID file.
+ */
+function removePid() {
+    const pidPath = (0,_paths__WEBPACK_IMPORTED_MODULE_1__/* .getPidPath */ .xD)();
+    try {
+        fs__WEBPACK_IMPORTED_MODULE_0__.unlinkSync(pidPath);
+    }
+    catch {
+        // Ignore errors - file may not exist
+    }
+}
+// -----------------------------------------------------------------------------
+// Startup verification
+// -----------------------------------------------------------------------------
+const STARTUP_TIMEOUT_MS = 5000;
+const STARTUP_CHECK_INTERVAL_MS = 100;
+/**
+ * Waits for the poller to signal startup by setting poller_started_at_ts.
+ *
+ * The poller writes this timestamp immediately on startup, before any API calls.
+ * This confirms:
+ *   - Process spawned successfully
+ *   - Environment variables were read
+ *   - File I/O is working
+ *
+ * @param timeoutMs - Maximum time to wait (default 5000ms)
+ * @returns Success or error with details
+ */
+async function verifyPollerStartup(timeoutMs = STARTUP_TIMEOUT_MS) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+        const result = readState();
+        if (result.success && result.state.poller_started_at_ts !== null) {
+            return { success: true };
+        }
+        await sleep(STARTUP_CHECK_INTERVAL_MS);
+    }
+    return {
+        success: false,
+        error: `Poller did not signal startup within ${timeoutMs}ms`,
+    };
+}
+
+
+/***/ }),
+
+/***/ 6141:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   Jm: () => (/* binding */ PID_FILE_NAME),
+/* harmony export */   Ky: () => (/* binding */ STATE_DIR_NAME),
+/* harmony export */   MT: () => (/* binding */ FETCH_TIMEOUT_MS),
+/* harmony export */   W5: () => (/* binding */ POLL_LOG_FILE_NAME),
+/* harmony export */   fZ: () => (/* binding */ STATE_FILE_NAME)
+/* harmony export */ });
+/* unused harmony exports POLL_INTERVAL_SECONDS, MAX_LIFETIME_MS */
+/**
+ * Boundary types for github-api-usage-monitor v1
+ * Generated from spec/spec.json
+ *
+ * These types define the contracts between modules.
+ * Do not modify without updating the spec.
+ */
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+const POLL_INTERVAL_SECONDS = 30;
+const STATE_DIR_NAME = 'github-api-usage-monitor';
+const STATE_FILE_NAME = 'state.json';
+const PID_FILE_NAME = 'poller.pid';
+const POLL_LOG_FILE_NAME = 'poll-log.jsonl';
+/** Timeout for fetch requests to GitHub API (milliseconds) */
+const FETCH_TIMEOUT_MS = 10000;
+/** Maximum poller lifetime as defense-in-depth (6 hours in milliseconds) */
+const MAX_LIFETIME_MS = (/* unused pure expression or super */ null && (6 * 60 * 60 * 1000));
+
+
+/***/ }),
+
+/***/ 1798:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   CO: () => (/* binding */ isStringOrNull),
+/* harmony export */   PU: () => (/* binding */ isARealObject),
+/* harmony export */   yy: () => (/* binding */ sleep)
+/* harmony export */ });
+/**
+ * Checks if input is an object and not null.
+ */
+const isARealObject = (value) => {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+};
+/**
+ * Checks if input is a string or null.
+ * Used for validating optional string fields in state.
+ */
+const isStringOrNull = (value) => {
+    return value === null || typeof value === 'string';
+};
+/**
+ * Returns a promise that resolves after the given milliseconds.
+ */
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+
+/***/ }),
+
 /***/ 2613:
 /***/ ((module) => {
 
@@ -27600,10 +29224,24 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("assert");
 
 /***/ }),
 
+/***/ 5317:
+/***/ ((module) => {
+
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("child_process");
+
+/***/ }),
+
 /***/ 4434:
 /***/ ((module) => {
 
 module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("events");
+
+/***/ }),
+
+/***/ 9896:
+/***/ ((module) => {
+
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs");
 
 /***/ }),
 
@@ -27768,6 +29406,20 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:zlib");
 
 /***/ }),
 
+/***/ 857:
+/***/ ((module) => {
+
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("os");
+
+/***/ }),
+
+/***/ 6928:
+/***/ ((module) => {
+
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("path");
+
+/***/ }),
+
 /***/ 3193:
 /***/ ((module) => {
 
@@ -27787,50 +29439,26 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("tls");
 
 module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("util");
 
-/***/ })
+/***/ }),
 
-/******/ });
-/************************************************************************/
-/******/ // The module cache
-/******/ var __webpack_module_cache__ = {};
-/******/ 
-/******/ // The require function
-/******/ function __nccwpck_require__(moduleId) {
-/******/ 	// Check if module is in cache
-/******/ 	var cachedModule = __webpack_module_cache__[moduleId];
-/******/ 	if (cachedModule !== undefined) {
-/******/ 		return cachedModule.exports;
-/******/ 	}
-/******/ 	// Create a new module (and put it into the cache)
-/******/ 	var module = __webpack_module_cache__[moduleId] = {
-/******/ 		// no module.id needed
-/******/ 		// no module.loaded needed
-/******/ 		exports: {}
-/******/ 	};
-/******/ 
-/******/ 	// Execute the module function
-/******/ 	var threw = true;
-/******/ 	try {
-/******/ 		__webpack_modules__[moduleId](module, module.exports, __nccwpck_require__);
-/******/ 		threw = false;
-/******/ 	} finally {
-/******/ 		if(threw) delete __webpack_module_cache__[moduleId];
-/******/ 	}
-/******/ 
-/******/ 	// Return the exports of the module
-/******/ 	return module.exports;
-/******/ }
-/******/ 
-/************************************************************************/
-/******/ /* webpack/runtime/compat */
-/******/ 
-/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = new URL('.', import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
-/******/ 
-/************************************************************************/
-var __webpack_exports__ = {};
+/***/ 7909:
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
-;// CONCATENATED MODULE: external "os"
-const external_os_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("os");
+
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  V4: () => (/* binding */ getInput),
+  pq: () => (/* binding */ info),
+  C1: () => (/* binding */ setFailed),
+  uH: () => (/* binding */ setOutput),
+  Pq: () => (/* binding */ core_setSecret),
+  $e: () => (/* binding */ warning)
+});
+
+// UNUSED EXPORTS: ExitCode, addPath, debug, endGroup, error, exportVariable, getBooleanInput, getIDToken, getMultilineInput, getState, group, isDebug, markdownSummary, notice, platform, saveState, setCommandEcho, startGroup, summary, toPlatformPath, toPosixPath, toWin32Path
+
+// EXTERNAL MODULE: external "os"
+var external_os_ = __nccwpck_require__(857);
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/utils.js
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -27905,7 +29533,7 @@ function utils_toCommandProperties(annotationProperties) {
  */
 function command_issueCommand(command, properties, message) {
     const cmd = new Command(command, properties, message);
-    process.stdout.write(cmd.toString() + external_os_namespaceObject.EOL);
+    process.stdout.write(cmd.toString() + external_os_.EOL);
 }
 function command_issue(name, message = '') {
     command_issueCommand(name, {}, message);
@@ -27961,8 +29589,8 @@ function escapeProperty(s) {
 //# sourceMappingURL=command.js.map
 ;// CONCATENATED MODULE: external "crypto"
 const external_crypto_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("crypto");
-;// CONCATENATED MODULE: external "fs"
-const external_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs");
+// EXTERNAL MODULE: external "fs"
+var external_fs_ = __nccwpck_require__(9896);
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/file-command.js
 // For internal use, subject to change.
 // We use any as a valid input type
@@ -27976,10 +29604,10 @@ function file_command_issueFileCommand(command, message) {
     if (!filePath) {
         throw new Error(`Unable to find environment variable for file command ${command}`);
     }
-    if (!external_fs_namespaceObject.existsSync(filePath)) {
+    if (!external_fs_.existsSync(filePath)) {
         throw new Error(`Missing file at path: ${filePath}`);
     }
-    external_fs_namespaceObject.appendFileSync(filePath, `${utils_toCommandValue(message)}${external_os_namespaceObject.EOL}`, {
+    external_fs_.appendFileSync(filePath, `${utils_toCommandValue(message)}${external_os_.EOL}`, {
         encoding: 'utf8'
     });
 }
@@ -27995,11 +29623,11 @@ function file_command_prepareKeyValueMessage(key, value) {
     if (convertedValue.includes(delimiter)) {
         throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
     }
-    return `${key}<<${delimiter}${external_os_namespaceObject.EOL}${convertedValue}${external_os_namespaceObject.EOL}${delimiter}`;
+    return `${key}<<${delimiter}${external_os_.EOL}${convertedValue}${external_os_.EOL}${delimiter}`;
 }
 //# sourceMappingURL=file-command.js.map
-;// CONCATENATED MODULE: external "path"
-const external_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("path");
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(6928);
 // EXTERNAL MODULE: external "http"
 var external_http_ = __nccwpck_require__(8611);
 // EXTERNAL MODULE: external "https"
@@ -28958,7 +30586,7 @@ var summary_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _
 };
 
 
-const { access, appendFile, writeFile } = external_fs_namespaceObject.promises;
+const { access, appendFile, writeFile } = external_fs_.promises;
 const SUMMARY_ENV_VAR = 'GITHUB_STEP_SUMMARY';
 const SUMMARY_DOCS_URL = 'https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary';
 class Summary {
@@ -28981,7 +30609,7 @@ class Summary {
                 throw new Error(`Unable to find environment variable for $${SUMMARY_ENV_VAR}. Check if your runtime environment supports job summaries.`);
             }
             try {
-                yield access(pathFromEnv, external_fs_namespaceObject.constants.R_OK | external_fs_namespaceObject.constants.W_OK);
+                yield access(pathFromEnv, external_fs_.constants.R_OK | external_fs_.constants.W_OK);
             }
             catch (_a) {
                 throw new Error(`Unable to access summary file: '${pathFromEnv}'. Check if the file has correct read/write permissions.`);
@@ -29077,7 +30705,7 @@ class Summary {
      * @returns {Summary} summary instance
      */
     addEOL() {
-        return this.addRaw(external_os_namespaceObject.EOL);
+        return this.addRaw(external_os_.EOL);
     }
     /**
      * Adds an HTML codeblock to the summary buffer
@@ -29265,8 +30893,8 @@ function toPlatformPath(pth) {
 var external_string_decoder_ = __nccwpck_require__(3193);
 // EXTERNAL MODULE: external "events"
 var external_events_ = __nccwpck_require__(4434);
-;// CONCATENATED MODULE: external "child_process"
-const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("child_process");
+// EXTERNAL MODULE: external "child_process"
+var external_child_process_ = __nccwpck_require__(5317);
 // EXTERNAL MODULE: external "assert"
 var external_assert_ = __nccwpck_require__(2613);
 ;// CONCATENATED MODULE: ./node_modules/@actions/io/lib/io-util.js
@@ -29281,7 +30909,7 @@ var io_util_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _
 };
 
 
-const { chmod, copyFile, lstat, mkdir, open: io_util_open, readdir, rename, rm, rmdir, stat, symlink, unlink } = external_fs_namespaceObject.promises;
+const { chmod, copyFile, lstat, mkdir, open: io_util_open, readdir, rename, rm, rmdir, stat, symlink, unlink } = external_fs_.promises;
 // export const {open} = 'fs'
 const IS_WINDOWS = process.platform === 'win32';
 /**
@@ -29308,7 +30936,7 @@ function readlink(fsPath) {
 }
 // See https://github.com/nodejs/node/blob/d0153aee367422d0858105abec186da4dff0a0c5/deps/uv/include/uv/win.h#L691
 const UV_FS_O_EXLOCK = 0x10000000;
-const READONLY = external_fs_namespaceObject.constants.O_RDONLY;
+const READONLY = external_fs_.constants.O_RDONLY;
 function exists(fsPath) {
     return io_util_awaiter(this, void 0, void 0, function* () {
         try {
@@ -29366,7 +30994,7 @@ function tryGetExecutablePath(filePath, extensions) {
         if (stats && stats.isFile()) {
             if (IS_WINDOWS) {
                 // on Windows, test for valid extension
-                const upperExt = external_path_namespaceObject.extname(filePath).toUpperCase();
+                const upperExt = external_path_.extname(filePath).toUpperCase();
                 if (extensions.some(validExt => validExt.toUpperCase() === upperExt)) {
                     return filePath;
                 }
@@ -29395,11 +31023,11 @@ function tryGetExecutablePath(filePath, extensions) {
                 if (IS_WINDOWS) {
                     // preserve the case of the actual file (since an extension was appended)
                     try {
-                        const directory = external_path_namespaceObject.dirname(filePath);
-                        const upperName = external_path_namespaceObject.basename(filePath).toUpperCase();
+                        const directory = external_path_.dirname(filePath);
+                        const upperName = external_path_.basename(filePath).toUpperCase();
                         for (const actualName of yield readdir(directory)) {
                             if (upperName === actualName.toUpperCase()) {
-                                filePath = external_path_namespaceObject.join(directory, actualName);
+                                filePath = external_path_.join(directory, actualName);
                                 break;
                             }
                         }
@@ -29619,7 +31247,7 @@ function findInPath(tool) {
         // build the list of extensions to try
         const extensions = [];
         if (IS_WINDOWS && process.env['PATHEXT']) {
-            for (const extension of process.env['PATHEXT'].split(external_path_namespaceObject.delimiter)) {
+            for (const extension of process.env['PATHEXT'].split(external_path_.delimiter)) {
                 if (extension) {
                     extensions.push(extension);
                 }
@@ -29634,7 +31262,7 @@ function findInPath(tool) {
             return [];
         }
         // if any path separators, return empty
-        if (tool.includes(external_path_namespaceObject.sep)) {
+        if (tool.includes(external_path_.sep)) {
             return [];
         }
         // build the list of directories
@@ -29645,7 +31273,7 @@ function findInPath(tool) {
         // across platforms.
         const directories = [];
         if (process.env.PATH) {
-            for (const p of process.env.PATH.split(external_path_namespaceObject.delimiter)) {
+            for (const p of process.env.PATH.split(external_path_.delimiter)) {
                 if (p) {
                     directories.push(p);
                 }
@@ -29654,7 +31282,7 @@ function findInPath(tool) {
         // find all matches
         const matches = [];
         for (const directory of directories) {
-            const filePath = yield tryGetExecutablePath(external_path_namespaceObject.join(directory, tool), extensions);
+            const filePath = yield tryGetExecutablePath(external_path_.join(directory, tool), extensions);
             if (filePath) {
                 matches.push(filePath);
             }
@@ -29801,13 +31429,13 @@ class ToolRunner extends external_events_.EventEmitter {
     _processLineBuffer(data, strBuffer, onLine) {
         try {
             let s = strBuffer + data.toString();
-            let n = s.indexOf(external_os_namespaceObject.EOL);
+            let n = s.indexOf(external_os_.EOL);
             while (n > -1) {
                 const line = s.substring(0, n);
                 onLine(line);
                 // the rest of the string ...
-                s = s.substring(n + external_os_namespaceObject.EOL.length);
-                n = s.indexOf(external_os_namespaceObject.EOL);
+                s = s.substring(n + external_os_.EOL.length);
+                n = s.indexOf(external_os_.EOL);
             }
             return s;
         }
@@ -30085,7 +31713,7 @@ class ToolRunner extends external_events_.EventEmitter {
                 (this.toolPath.includes('/') ||
                     (toolrunner_IS_WINDOWS && this.toolPath.includes('\\')))) {
                 // prefer options.cwd if it is specified, however options.cwd may also need to be rooted
-                this.toolPath = external_path_namespaceObject.resolve(process.cwd(), this.options.cwd || process.cwd(), this.toolPath);
+                this.toolPath = external_path_.resolve(process.cwd(), this.options.cwd || process.cwd(), this.toolPath);
             }
             // if the tool is only a file name, then resolve it from the PATH
             // otherwise verify it exists (add extension on Windows if necessary)
@@ -30098,7 +31726,7 @@ class ToolRunner extends external_events_.EventEmitter {
                 }
                 const optionsNonNull = this._cloneExecOptions(this.options);
                 if (!optionsNonNull.silent && optionsNonNull.outStream) {
-                    optionsNonNull.outStream.write(this._getCommandString(optionsNonNull) + external_os_namespaceObject.EOL);
+                    optionsNonNull.outStream.write(this._getCommandString(optionsNonNull) + external_os_.EOL);
                 }
                 const state = new ExecState(optionsNonNull, this.toolPath);
                 state.on('debug', (message) => {
@@ -30108,7 +31736,7 @@ class ToolRunner extends external_events_.EventEmitter {
                     return reject(new Error(`The cwd: ${this.options.cwd} does not exist!`));
                 }
                 const fileName = this._getSpawnFileName();
-                const cp = external_child_process_namespaceObject.spawn(fileName, this._getSpawnArgs(optionsNonNull), this._getSpawnOptions(this.options, fileName));
+                const cp = external_child_process_.spawn(fileName, this._getSpawnArgs(optionsNonNull), this._getSpawnOptions(this.options, fileName));
                 let stdbuffer = '';
                 if (cp.stdout) {
                     cp.stdout.on('data', (data) => {
@@ -30437,8 +32065,8 @@ const getLinuxInfo = () => platform_awaiter(void 0, void 0, void 0, function* ()
         version
     };
 });
-const platform = external_os_namespaceObject.platform();
-const arch = external_os_namespaceObject.arch();
+const platform = external_os_.platform();
+const arch = external_os_.arch();
 const isWindows = platform === 'win32';
 const isMacOS = platform === 'darwin';
 const isLinux = platform === 'linux';
@@ -30619,7 +32247,7 @@ function setOutput(name, value) {
     if (filePath) {
         return file_command_issueFileCommand('OUTPUT', file_command_prepareKeyValueMessage(name, value));
     }
-    process.stdout.write(external_os_namespaceObject.EOL);
+    process.stdout.write(external_os_.EOL);
     command_issueCommand('set-output', { name }, utils_toCommandValue(value));
 }
 /**
@@ -30687,7 +32315,7 @@ function notice(message, properties = {}) {
  * @param message info message
  */
 function info(message) {
-    process.stdout.write(message + external_os_namespaceObject.EOL);
+    process.stdout.write(message + external_os_.EOL);
 }
 /**
  * Begin an output group.
@@ -30774,1482 +32402,149 @@ function getIDToken(aud) {
  */
 
 //# sourceMappingURL=core.js.map
-;// CONCATENATED MODULE: ./src/platform.ts
-/**
- * Platform Detection
- * Layer: infra
- *
- * Provided ports:
- *   - platform.isSupported
- *   - platform.detect
- *
- * Detects the current platform and validates support for v1.
- * v1 supports Linux and macOS GitHub-hosted runners only.
- */
 
-// -----------------------------------------------------------------------------
-// Port: platform.detect
-// -----------------------------------------------------------------------------
-/**
- * Detects the current platform.
- */
-function detect() {
-    const platform = external_os_namespaceObject.platform();
-    switch (platform) {
-        case 'linux':
-            return 'linux';
-        case 'darwin':
-            return 'darwin';
-        case 'win32':
-            return 'win32';
-        default:
-            return 'unknown';
-    }
-}
-// -----------------------------------------------------------------------------
-// Port: platform.isSupported
-// -----------------------------------------------------------------------------
-/**
- * Checks if the current platform is supported for v1.
- * Returns detailed info including reason if unsupported.
- */
-function isSupported() {
-    const platform = detect();
-    switch (platform) {
-        case 'linux':
-            return { platform, supported: true };
-        case 'darwin':
-            return { platform, supported: true };
-        case 'win32':
-            return {
-                platform,
-                supported: false,
-                reason: 'Windows is not supported in v1. Background process lifecycle differs from POSIX systems.',
-            };
-        default:
-            return {
-                platform,
-                supported: false,
-                reason: `Unknown platform: ${external_os_namespaceObject.platform()}. Only Linux and macOS are supported.`,
-            };
-    }
-}
-/**
- * Validates platform and throws if unsupported.
- * Use this for fail-fast behavior in start mode.
- */
-function assertSupported() {
-    const info = isSupported();
-    if (!info.supported) {
-        throw new Error(`Unsupported platform: ${info.reason}`);
-    }
-}
+/***/ })
 
-;// CONCATENATED MODULE: ./src/types.ts
-/**
- * Boundary types for github-api-usage-monitor v1
- * Generated from spec/spec.json
- *
- * These types define the contracts between modules.
- * Do not modify without updating the spec.
- */
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-const types_POLL_INTERVAL_SECONDS = 30;
-const STATE_DIR_NAME = 'github-api-usage-monitor';
-const STATE_FILE_NAME = 'state.json';
-const PID_FILE_NAME = 'poller.pid';
-const POLL_LOG_FILE_NAME = 'poll-log.jsonl';
-/** Timeout for fetch requests to GitHub API (milliseconds) */
-const FETCH_TIMEOUT_MS = 10000;
-/** Maximum poller lifetime as defense-in-depth (6 hours in milliseconds) */
-const types_MAX_LIFETIME_MS = (/* unused pure expression or super */ null && (6 * 60 * 60 * 1000));
-
-;// CONCATENATED MODULE: ./src/paths.ts
-/**
- * Path Resolver
- * Layer: infra
- *
- * Provided ports:
- *   - paths.statePath
- *   - paths.pidPath
- *
- * Resolves paths within $RUNNER_TEMP for state persistence.
- */
-
-
-// -----------------------------------------------------------------------------
-// Port: paths.statePath
-// -----------------------------------------------------------------------------
-/**
- * Returns the absolute path to the state directory.
- * Creates the path string only; does not create the directory.
- *
- * @throws Error if RUNNER_TEMP is not set
- */
-function paths_getStateDir() {
-    const runnerTemp = process.env['RUNNER_TEMP'];
-    if (!runnerTemp) {
-        throw new Error('RUNNER_TEMP environment variable is not set');
-    }
-    return external_path_namespaceObject.join(runnerTemp, STATE_DIR_NAME);
-}
-/**
- * Returns the absolute path to state.json
- */
-function getStatePath() {
-    return external_path_namespaceObject.join(paths_getStateDir(), STATE_FILE_NAME);
-}
-// -----------------------------------------------------------------------------
-// Port: paths.pidPath
-// -----------------------------------------------------------------------------
-/**
- * Returns the absolute path to poller.pid
- */
-function paths_getPidPath() {
-    return external_path_namespaceObject.join(paths_getStateDir(), PID_FILE_NAME);
-}
-// -----------------------------------------------------------------------------
-// Port: paths.pollLogPath
-// -----------------------------------------------------------------------------
-/**
- * Returns the absolute path to poll-log.jsonl
- */
-function paths_getPollLogPath() {
-    return external_path_namespaceObject.join(paths_getStateDir(), POLL_LOG_FILE_NAME);
-}
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-/**
- * Returns the path for atomic write temporary file
- */
-function getStateTmpPath() {
-    return external_path_namespaceObject.join(paths_getStateDir(), `${STATE_FILE_NAME}.tmp`);
-}
-
-;// CONCATENATED MODULE: ./src/utils.ts
-/**
- * Checks if input is an object and not null.
- */
-const isARealObject = (value) => {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-};
-/**
- * Checks if input is a string or null.
- * Used for validating optional string fields in state.
- */
-const isStringOrNull = (value) => {
-    return value === null || typeof value === 'string';
-};
-/**
- * Returns a promise that resolves after the given milliseconds.
- */
-function utils_sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-;// CONCATENATED MODULE: ./src/state.ts
-/**
- * State Manager
- * Layer: core
- *
- * Provided ports:
- *   - state.read
- *   - state.write
- *
- * Manages persistent state in $RUNNER_TEMP.
- * Uses atomic rename for safe writes.
- */
-
-
-/**
- * Reads reducer state from disk.
- *
- * @returns State or error with details
- */
-function state_readState() {
-    const statePath = getStatePath();
-    try {
-        const content = external_fs_namespaceObject.readFileSync(statePath, 'utf-8');
-        const parsed = JSON.parse(content);
-        if (!isValidState(parsed)) {
-            return {
-                success: false,
-                error: 'Invalid state structure',
-                notFound: false,
-            };
-        }
-        return { success: true, state: parsed };
-    }
-    catch (err) {
-        const error = err;
-        if (error.code === 'ENOENT') {
-            return {
-                success: false,
-                error: 'State file not found',
-                notFound: true,
-            };
-        }
-        return {
-            success: false,
-            error: `Failed to read state: ${error.message}`,
-            notFound: false,
-        };
-    }
-}
-/**
- * Writes reducer state to disk atomically.
- * Creates state directory if it doesn't exist.
- * Cleans up temp file on failure to prevent orphaned files.
- *
- * @param state - State to persist
- */
-function state_writeState(state) {
-    const stateDir = paths_getStateDir();
-    const statePath = getStatePath();
-    const tmpPath = getStateTmpPath();
-    try {
-        // Ensure directory exists
-        external_fs_namespaceObject.mkdirSync(stateDir, { recursive: true });
-        // Write to temp file
-        const content = JSON.stringify(state, null, 2);
-        external_fs_namespaceObject.writeFileSync(tmpPath, content, 'utf-8');
-        // Atomic rename
-        external_fs_namespaceObject.renameSync(tmpPath, statePath);
-        return { success: true };
-    }
-    catch (err) {
-        // Clean up temp file on failure to prevent orphaned files
-        try {
-            external_fs_namespaceObject.unlinkSync(tmpPath);
-        }
-        catch {
-            // Ignore cleanup errors - file may not exist
-        }
-        const error = err;
-        return {
-            success: false,
-            error: `Failed to write state: ${error.message}`,
-        };
-    }
-}
-// -----------------------------------------------------------------------------
-// Validation
-// -----------------------------------------------------------------------------
-/**
- * Validates that parsed JSON has the ReducerState shape.
- * Handles missing fields gracefully per spec (W4).
- */
-function isValidState(obj) {
-    if (!isARealObject(obj)) {
-        return false;
-    }
-    // Required fields
-    if (!isARealObject(obj['buckets'])) {
-        return false;
-    }
-    if (typeof obj['started_at_ts'] !== 'string') {
-        return false;
-    }
-    if (typeof obj['interval_seconds'] !== 'number') {
-        return false;
-    }
-    if (typeof obj['poll_count'] !== 'number') {
-        return false;
-    }
-    if (typeof obj['poll_failures'] !== 'number') {
-        return false;
-    }
-    // Validate each bucket entry
-    for (const value of Object.values(obj['buckets'])) {
-        if (!isValidBucketState(value)) {
-            return false;
-        }
-    }
-    // Optional fields: must be string | null
-    if (!isStringOrNull(obj['stopped_at_ts'])) {
-        return false;
-    }
-    if (!isStringOrNull(obj['poller_started_at_ts'])) {
-        return false;
-    }
-    if (!isStringOrNull(obj['last_error'])) {
-        return false;
-    }
-    return true;
-}
-/**
- * Validates that a value has the BucketState shape.
- */
-function isValidBucketState(value) {
-    if (!isARealObject(value)) {
-        return false;
-    }
-    const numericFields = [
-        'last_reset',
-        'last_used',
-        'total_used',
-        'windows_crossed',
-        'anomalies',
-        'limit',
-        'remaining',
-        'first_used',
-        'first_remaining',
-    ];
-    for (const field of numericFields) {
-        if (typeof value[field] !== 'number') {
-            return false;
-        }
-    }
-    if (typeof value['last_seen_ts'] !== 'string') {
-        return false;
-    }
-    return true;
-}
-// -----------------------------------------------------------------------------
-// PID file management
-// -----------------------------------------------------------------------------
-
-
-/**
- * Writes the poller PID to disk.
- */
-function writePid(pid) {
-    const pidPath = getPidPath();
-    const stateDir = getStateDir();
-    try {
-        fs.mkdirSync(stateDir, { recursive: true });
-        fs.writeFileSync(pidPath, String(pid), 'utf-8');
-        return { success: true };
-    }
-    catch (err) {
-        const error = err;
-        return {
-            success: false,
-            error: `Failed to write PID: ${error.message}`,
-        };
-    }
-}
-/**
- * Reads the poller PID from disk.
- */
-function readPid() {
-    const pidPath = paths_getPidPath();
-    try {
-        const content = external_fs_namespaceObject.readFileSync(pidPath, 'utf-8');
-        const pid = parseInt(content.trim(), 10);
-        return isNaN(pid) ? null : pid;
-    }
-    catch {
-        return null;
-    }
-}
-/**
- * Removes the PID file.
- */
-function removePid() {
-    const pidPath = paths_getPidPath();
-    try {
-        external_fs_namespaceObject.unlinkSync(pidPath);
-    }
-    catch {
-        // Ignore errors - file may not exist
-    }
-}
-// -----------------------------------------------------------------------------
-// Startup verification
-// -----------------------------------------------------------------------------
-const STARTUP_TIMEOUT_MS = 5000;
-const STARTUP_CHECK_INTERVAL_MS = 100;
-/**
- * Waits for the poller to signal startup by setting poller_started_at_ts.
- *
- * The poller writes this timestamp immediately on startup, before any API calls.
- * This confirms:
- *   - Process spawned successfully
- *   - Environment variables were read
- *   - File I/O is working
- *
- * @param timeoutMs - Maximum time to wait (default 5000ms)
- * @returns Success or error with details
- */
-async function verifyPollerStartup(timeoutMs = STARTUP_TIMEOUT_MS) {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-        const result = state_readState();
-        if (result.success && result.state.poller_started_at_ts !== null) {
-            return { success: true };
-        }
-        await sleep(STARTUP_CHECK_INTERVAL_MS);
-    }
-    return {
-        success: false,
-        error: `Poller did not signal startup within ${timeoutMs}ms`,
-    };
-}
-
-;// CONCATENATED MODULE: ./src/poll-log.ts
-/**
- * Poll Log
- * Layer: infra
- *
- * Provided ports:
- *   - pollLog.append
- *
- * Append-only JSONL diagnostic log of per-poll snapshots.
- * Each line is a self-contained JSON object (PollLogEntry).
- * Used by self-test diagnostics for detailed debugging;
- * the main action summary (output.ts) does not read this file.
- */
-
-
-// -----------------------------------------------------------------------------
-// Port: pollLog.append
-// -----------------------------------------------------------------------------
-/**
- * Appends a single poll log entry as a JSON line to the poll log file.
- * Creates the file if it does not exist.
- *
- * Best-effort: swallows write errors so the poller is never disrupted
- * by diagnostic logging failures.
- */
-function poll_log_appendPollLogEntry(entry) {
-    try {
-        const line = JSON.stringify(entry) + '\n';
-        fs.appendFileSync(getPollLogPath(), line, 'utf-8');
-    }
-    catch {
-        // Diagnostic-only — never disrupt the poller
-    }
-}
-// -----------------------------------------------------------------------------
-// Port: pollLog.read
-// -----------------------------------------------------------------------------
-/**
- * Reads all poll log entries from the JSONL file.
- * Returns an empty array if the file does not exist or is unreadable.
- */
-function readPollLog() {
-    try {
-        const path = paths_getPollLogPath();
-        if (!external_fs_namespaceObject.existsSync(path))
-            return [];
-        const content = external_fs_namespaceObject.readFileSync(path, 'utf-8');
-        return content
-            .split('\n')
-            .filter(Boolean)
-            .map((line) => JSON.parse(line));
-    }
-    catch {
-        return [];
-    }
-}
-
-;// CONCATENATED MODULE: ./src/poller.ts
-/**
- * Poller Process
- * Layer: poller
- *
- * Provided ports:
- *   - poller.spawn
- *   - poller.kill
- *
- * Background process that polls /rate_limit and updates state.
- * Runs as a detached child process.
- *
- * When run directly (as child process entry):
- *   - Reads config from environment
- *   - Polls at interval
- *   - Updates state file atomically
- *   - Handles SIGTERM for graceful shutdown
- */
-
-
-
-
-
-
-
-
-/**
- * Spawns the poller as a detached background process.
- *
- * @param token - GitHub token for API calls
- * @returns PID of spawned process or error
- */
-function spawnPoller(token) {
-    try {
-        // Resolve path to bundled poller entry
-        // ncc bundles to dist/poller/index.js
-        const actionPath = process.env['GITHUB_ACTION_PATH'];
-        const baseDir = actionPath
-            ? path.resolve(actionPath, 'dist')
-            : path.dirname(process.argv[1] ?? '');
-        const pollerEntry = path.join(baseDir, 'poller', 'index.js');
-        const child = spawn(process.execPath, [pollerEntry], {
-            detached: true,
-            stdio: 'ignore',
-            env: {
-                ...process.env,
-                GITHUB_API_MONITOR_TOKEN: token,
-                GITHUB_API_MONITOR_INTERVAL: String(POLL_INTERVAL_SECONDS),
-            },
-        });
-        // Allow parent to exit without waiting
-        child.unref();
-        if (!child.pid) {
-            return { success: false, error: 'Failed to get child PID' };
-        }
-        return { success: true, pid: child.pid };
-    }
-    catch (err) {
-        const error = err;
-        return { success: false, error: `Failed to spawn poller: ${error.message}` };
-    }
-}
-const KILL_TIMEOUT_MS = 3000;
-const KILL_CHECK_INTERVAL_MS = 100;
-/**
- * Kills the poller process by PID.
- * Sends SIGTERM for graceful shutdown.
- *
- * @param pid - Process ID to kill
- */
-function killPoller(pid) {
-    try {
-        // Check if process exists
-        process.kill(pid, 0);
-        // Send SIGTERM
-        process.kill(pid, 'SIGTERM');
-        return { success: true };
-    }
-    catch (err) {
-        const error = err;
-        if (error.code === 'ESRCH') {
-            return {
-                success: false,
-                error: 'Process not found',
-                notFound: true,
-            };
-        }
-        return {
-            success: false,
-            error: `Failed to kill poller: ${error.message}`,
-            notFound: false,
-        };
-    }
-}
-/**
- * Kills poller with verification and SIGKILL escalation.
- * Sends SIGTERM, waits for exit, escalates to SIGKILL if needed.
- */
-async function killPollerWithVerification(pid) {
-    // Check if process exists
-    if (!isProcessRunning(pid)) {
-        return { success: false, error: 'Process not found', notFound: true };
-    }
-    // Send SIGTERM
-    try {
-        process.kill(pid, 'SIGTERM');
-    }
-    catch (err) {
-        const error = err;
-        if (error.code === 'ESRCH') {
-            return { success: false, error: 'Process not found', notFound: true };
-        }
-        return { success: false, error: `Failed to send SIGTERM: ${error.message}`, notFound: false };
-    }
-    // Wait for process to die
-    const startTime = Date.now();
-    while (Date.now() - startTime < KILL_TIMEOUT_MS) {
-        await utils_sleep(KILL_CHECK_INTERVAL_MS);
-        if (!isProcessRunning(pid)) {
-            return { success: true, escalated: false };
-        }
-    }
-    // Escalate to SIGKILL
-    try {
-        process.kill(pid, 'SIGKILL');
-        await utils_sleep(KILL_CHECK_INTERVAL_MS);
-        if (!isProcessRunning(pid)) {
-            return { success: true, escalated: true };
-        }
-        return { success: false, error: 'Process survived SIGKILL', notFound: false };
-    }
-    catch (err) {
-        const error = err;
-        if (error.code === 'ESRCH') {
-            return { success: true, escalated: true }; // Died between check and kill
-        }
-        return { success: false, error: `Failed to send SIGKILL: ${error.message}`, notFound: false };
-    }
-}
-function isProcessRunning(pid) {
-    try {
-        process.kill(pid, 0);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
-const BURST_THRESHOLD_S = 8;
-const PRE_RESET_BUFFER_S = 3;
-const POST_RESET_DELAY_S = 3;
-const MIN_SLEEP_MS = 1000;
-/**
- * Computes when to poll next based on upcoming bucket resets.
- *
- * Instead of a fixed interval, this targets polls just before bucket resets
- * to minimize the uncertainty window — the gap between the last pre-reset
- * observation and the actual reset.
- *
- * When a reset is imminent (≤8s away), enters "burst mode": two polls
- * bracket the reset boundary to capture both pre-reset and post-reset state.
- */
-function computeSleepPlan(state, baseIntervalMs, nowEpochSeconds) {
-    const activeResets = Object.values(state.buckets)
-        .filter((b) => b.total_used > 0)
-        .map((b) => b.last_reset)
-        .filter((r) => r > nowEpochSeconds);
-    if (activeResets.length === 0) {
-        return { sleepMs: baseIntervalMs, burst: false, burstGapMs: 0 };
-    }
-    const soonestReset = Math.min(...activeResets);
-    const secondsUntilReset = soonestReset - nowEpochSeconds;
-    if (secondsUntilReset <= 0) {
-        // Reset already passed — poll quickly to pick up new window
-        return { sleepMs: Math.min(2000, baseIntervalMs), burst: false, burstGapMs: 0 };
-    }
-    if (secondsUntilReset <= BURST_THRESHOLD_S) {
-        // Close to reset — burst mode: poll before and after
-        const preResetSleep = Math.max((secondsUntilReset - PRE_RESET_BUFFER_S) * 1000, MIN_SLEEP_MS);
-        const burstGap = (PRE_RESET_BUFFER_S + POST_RESET_DELAY_S) * 1000;
-        return { sleepMs: preResetSleep, burst: true, burstGapMs: burstGap };
-    }
-    if (secondsUntilReset * 1000 < baseIntervalMs) {
-        // Reset coming before next regular poll — target pre-reset
-        const targetSleep = (secondsUntilReset - PRE_RESET_BUFFER_S) * 1000;
-        return { sleepMs: Math.max(targetSleep, MIN_SLEEP_MS), burst: false, burstGapMs: 0 };
-    }
-    return { sleepMs: baseIntervalMs, burst: false, burstGapMs: 0 };
-}
-// -----------------------------------------------------------------------------
-// Poll debounce
-// -----------------------------------------------------------------------------
-/**
- * Minimum milliseconds between any two polls.
- *
- * Prevents rapid-fire polling when multiple buckets have staggered resets
- * close together (e.g. three 60s buckets resetting 5s apart). Without this,
- * each reset triggers its own burst, producing 6 polls in ~15s. The debounce
- * floors every sleep so back-to-back bursts collapse naturally.
- *
- * Tunable independently from computeSleepPlan's reset-targeting logic.
- */
-const POLL_DEBOUNCE_MS = 5000;
-/**
- * Applies a minimum-interval debounce to a sleep plan.
- * Clamps both the initial sleep and the burst gap (if any) so that no
- * two polls can occur closer than `debounceMs` apart.
- */
-function applyDebounce(plan, debounceMs) {
-    return {
-        ...plan,
-        sleepMs: Math.max(plan.sleepMs, debounceMs),
-        burstGapMs: plan.burst ? Math.max(plan.burstGapMs, debounceMs) : plan.burstGapMs,
-    };
-}
-// -----------------------------------------------------------------------------
-// Poller main loop (when run as child process)
-// -----------------------------------------------------------------------------
-/**
- * Main polling loop.
- * Runs indefinitely until SIGTERM received.
- *
- * Startup sequence:
- *   1. Read or create initial state
- *   2. Write state immediately (signals "alive" to parent)
- *   3. Begin polling loop
- *
- * Shutdown sequence (SIGTERM):
- *   1. Write current state immediately
- *   2. Exit with code 0
- *
- * The parent process (main.ts) waits for the state file to confirm
- * the poller started successfully before proceeding.
- */
-async function runPollerLoop(token, intervalSeconds) {
-    let state;
-    const startTimeMs = Date.now();
-    // Handle graceful shutdown - write state immediately before exiting
-    process.on('SIGTERM', () => {
-        if (state) {
-            writeState(state);
-        }
-        process.exit(0);
-    });
-    // Initial state or read existing
-    const stateResult = readState();
-    if (stateResult.success) {
-        state = stateResult.state;
-    }
-    else {
-        state = createInitialState();
-    }
-    // Signal alive: set timestamp and write state so parent can detect startup
-    state = { ...state, poller_started_at_ts: new Date().toISOString() };
-    writeState(state);
-    // Initial poll immediately
-    state = await performPoll(state, token);
-    // Polling loop (runs until SIGTERM or max lifetime exceeded)
-    while (true) {
-        // Defense-in-depth: exit if max lifetime exceeded
-        const elapsedMs = Date.now() - startTimeMs;
-        if (elapsedMs >= MAX_LIFETIME_MS) {
-            console.error(`Poller exceeded max lifetime (${MAX_LIFETIME_MS}ms). ` + `Exiting as safety measure.`);
-            state = markStopped(state);
-            writeState(state);
-            process.exit(0);
-        }
-        const rawPlan = computeSleepPlan(state, intervalSeconds * 1000, Math.floor(Date.now() / 1000));
-        const plan = applyDebounce(rawPlan, POLL_DEBOUNCE_MS);
-        await sleep(plan.sleepMs);
-        state = await performPoll(state, token);
-        if (plan.burst) {
-            await sleep(plan.burstGapMs);
-            state = await performPoll(state, token);
-        }
-    }
-}
-/**
- * Performs a single poll and updates state.
- */
-async function performPoll(state, token) {
-    const timestamp = new Date().toISOString();
-    const result = await fetchRateLimit(token);
-    if (!result.success) {
-        const newState = recordFailure(state, result.error);
-        writeState(newState);
-        return newState;
-    }
-    const reduceResult = reduce(state, result.data, timestamp);
-    const newState = reduceResult.state;
-    writeState(newState);
-    // Build and append diagnostic poll log entry
-    const bucketSnapshots = {};
-    for (const [name, update] of Object.entries(reduceResult.updates)) {
-        const sample = result.data.resources[name];
-        if (sample) {
-            bucketSnapshots[name] = {
-                used: sample.used,
-                remaining: sample.remaining,
-                reset: sample.reset,
-                limit: sample.limit,
-                delta: update.delta,
-                window_crossed: update.window_crossed,
-                anomaly: update.anomaly,
-            };
-        }
-    }
-    const logEntry = {
-        timestamp,
-        poll_number: newState.poll_count,
-        buckets: bucketSnapshots,
-    };
-    appendPollLogEntry(logEntry);
-    return newState;
-}
-// -----------------------------------------------------------------------------
-// Child process entry point
-// -----------------------------------------------------------------------------
-/**
- * Entry point when run as child process.
- * Exported for use by poller-entry.ts
- */
-async function main() {
-    const token = process.env['GITHUB_API_MONITOR_TOKEN'];
-    const intervalStr = process.env['GITHUB_API_MONITOR_INTERVAL'];
-    if (!token) {
-        console.error('GITHUB_API_MONITOR_TOKEN not set');
-        process.exit(1);
-    }
-    const interval = intervalStr ? parseInt(intervalStr, 10) : POLL_INTERVAL_SECONDS;
-    await runPollerLoop(token, interval);
-}
-// Entry point moved to poller-entry.ts for ESM compatibility
-// See: poller-entry.ts is built as dist/poller/index.js
-
-;// CONCATENATED MODULE: ./src/reducer.ts
-/**
- * Reducer
- * Layer: core
- *
- * Provided ports:
- *   - reducer.update
- *   - reducer.initBucket
- *
- * Pure business logic for rate-limit reduction.
- * Maintains constant-space per-bucket state.
- *
- * Algorithm (per poll, per bucket):
- *   if bucket not initialized:
- *     initialize with current reset/used
- *   else if reset changed AND used < last_used (genuine window reset):
- *     windows_crossed += 1
- *     total_used += used (include post-reset usage)
- *     last_reset = reset
- *   else if reset changed AND used >= last_used (timestamp rotation, not a real reset):
- *     delta = used - last_used
- *     total_used += delta
- *     last_reset = reset
- *   else (same window):
- *     delta = used - last_used
- *     if delta < 0: anomaly (do not subtract)
- *     else: total_used += delta
- *   last_used = used
- */
-
-// -----------------------------------------------------------------------------
-// Port: reducer.initBucket
-// -----------------------------------------------------------------------------
-/**
- * Initializes a new bucket state from the first sample.
- */
-function initBucket(sample, timestamp) {
-    return {
-        last_reset: sample.reset,
-        last_used: sample.used,
-        total_used: 0, // First sample is baseline, not counted
-        windows_crossed: 0,
-        anomalies: 0,
-        last_seen_ts: timestamp,
-        limit: sample.limit,
-        remaining: sample.remaining,
-        first_used: sample.used,
-        first_remaining: sample.remaining,
-    };
-}
-/**
- * Updates a bucket state with a new sample.
- * Pure function - returns new state without mutating input.
- *
- * @param bucket - Current bucket state
- * @param sample - New rate limit sample
- * @param timestamp - ISO timestamp of observation
- */
-function updateBucket(bucket, sample, timestamp) {
-    const resetChanged = sample.reset !== bucket.last_reset;
-    const usedDecreased = sample.used < bucket.last_used;
-    // Genuine window reset: reset timestamp changed AND used count dropped.
-    // This means the rate-limit window actually rolled over and the counter reset.
-    if (resetChanged && usedDecreased) {
-        return {
-            bucket: {
-                last_reset: sample.reset,
-                last_used: sample.used,
-                total_used: bucket.total_used + sample.used,
-                windows_crossed: bucket.windows_crossed + 1,
-                anomalies: bucket.anomalies,
-                last_seen_ts: timestamp,
-                limit: sample.limit,
-                remaining: sample.remaining,
-                first_used: bucket.first_used,
-                first_remaining: bucket.first_remaining,
-            },
-            delta: sample.used,
-            anomaly: false,
-            window_crossed: true,
-        };
-    }
-    // Reset timestamp rotated but used didn't drop (e.g. GitHub rotating
-    // timestamps on unused buckets, or continued usage across a boundary).
-    // Treat as a normal delta — update last_reset but don't count a crossing.
-    if (resetChanged) {
-        const delta = sample.used - bucket.last_used;
-        return {
-            bucket: {
-                last_reset: sample.reset,
-                last_used: sample.used,
-                total_used: bucket.total_used + delta,
-                windows_crossed: bucket.windows_crossed,
-                anomalies: bucket.anomalies,
-                last_seen_ts: timestamp,
-                limit: sample.limit,
-                remaining: sample.remaining,
-                first_used: bucket.first_used,
-                first_remaining: bucket.first_remaining,
-            },
-            delta,
-            anomaly: false,
-            window_crossed: false,
-        };
-    }
-    // Same window: calculate delta
-    const delta = sample.used - bucket.last_used;
-    if (delta < 0) {
-        // Anomaly: used decreased without reset change
-        return {
-            bucket: {
-                last_reset: bucket.last_reset,
-                last_used: sample.used,
-                total_used: bucket.total_used,
-                windows_crossed: bucket.windows_crossed,
-                anomalies: bucket.anomalies + 1,
-                last_seen_ts: timestamp,
-                limit: sample.limit,
-                remaining: sample.remaining,
-                first_used: bucket.first_used,
-                first_remaining: bucket.first_remaining,
-            },
-            delta: 0,
-            anomaly: true,
-            window_crossed: false,
-        };
-    }
-    // Normal case: accumulate delta
-    return {
-        bucket: {
-            last_reset: bucket.last_reset,
-            last_used: sample.used,
-            total_used: bucket.total_used + delta,
-            windows_crossed: bucket.windows_crossed,
-            anomalies: bucket.anomalies,
-            last_seen_ts: timestamp,
-            limit: sample.limit,
-            remaining: sample.remaining,
-            first_used: bucket.first_used,
-            first_remaining: bucket.first_remaining,
-        },
-        delta,
-        anomaly: false,
-        window_crossed: false,
-    };
-}
-// -----------------------------------------------------------------------------
-// State factory
-// -----------------------------------------------------------------------------
-/**
- * Creates initial reducer state.
- */
-function reducer_createInitialState() {
-    return {
-        buckets: {},
-        started_at_ts: new Date().toISOString(),
-        stopped_at_ts: null,
-        poller_started_at_ts: null,
-        interval_seconds: POLL_INTERVAL_SECONDS,
-        poll_count: 0,
-        poll_failures: 0,
-        last_error: null,
-    };
-}
-/**
- * Processes a full rate limit response and updates state.
- * Pure function - returns new state without mutating input.
- *
- * @param state - Current reducer state
- * @param response - Rate limit API response
- * @param timestamp - ISO timestamp of observation
- */
-function reducer_reduce(state, response, timestamp) {
-    const newBuckets = { ...state.buckets };
-    const updates = {};
-    // Process each bucket in the response
-    for (const [name, sample] of Object.entries(response.resources)) {
-        const existingBucket = state.buckets[name];
-        if (!existingBucket) {
-            // New bucket: initialize
-            const bucket = initBucket(sample, timestamp);
-            newBuckets[name] = bucket;
-            updates[name] = {
-                bucket,
-                delta: 0,
-                anomaly: false,
-                window_crossed: false,
-            };
-        }
-        else {
-            // Existing bucket: update
-            const result = updateBucket(existingBucket, sample, timestamp);
-            newBuckets[name] = result.bucket;
-            updates[name] = result;
-        }
-    }
-    return {
-        state: {
-            ...state,
-            buckets: newBuckets,
-            poll_count: state.poll_count + 1,
-        },
-        updates,
-    };
-}
-/**
- * Records a poll failure in state.
- * Pure function - returns new state.
- */
-function reducer_recordFailure(state, error) {
-    return {
-        ...state,
-        poll_failures: state.poll_failures + 1,
-        last_error: error,
-    };
-}
-/**
- * Marks state as stopped.
- */
-function reducer_markStopped(state) {
-    return {
-        ...state,
-        stopped_at_ts: new Date().toISOString(),
-    };
-}
-
-;// CONCATENATED MODULE: ./src/github.ts
-/**
- * GitHub API Client
- * Layer: infra
- *
- * Provided ports:
- *   - github.fetchRateLimit
- *
- * Fetches rate limit data from the GitHub API.
- */
-
-
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-const RATE_LIMIT_URL = 'https://api.github.com/rate_limit';
-const USER_AGENT = 'github-api-usage-monitor/1.0';
-/**
- * Fetches rate limit data from GitHub API.
- *
- * @param token - GitHub token for authentication
- * @returns Rate limit response or error
- */
-async function github_fetchRateLimit(token) {
-    const timestamp = new Date().toISOString();
-    // Set up abort controller with timeout to prevent indefinite hangs
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    try {
-        const response = await fetch(RATE_LIMIT_URL, {
-            signal: controller.signal,
-            method: 'GET',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: 'application/vnd.github+json',
-                'User-Agent': USER_AGENT,
-                'X-GitHub-Api-Version': '2022-11-28',
-            },
-        });
-        clearTimeout(timeoutId);
-        if (!response.ok) {
-            const statusText = response.statusText || 'Unknown error';
-            return {
-                success: false,
-                error: `HTTP ${response.status}: ${statusText}`,
-                timestamp,
-            };
-        }
-        const raw = await response.json();
-        const parsed = parseRateLimitResponse(raw);
-        if (!parsed) {
-            return {
-                success: false,
-                error: 'Failed to parse rate limit response',
-                timestamp,
-            };
-        }
-        return {
-            success: true,
-            data: parsed,
-            timestamp,
-        };
-    }
-    catch (err) {
-        clearTimeout(timeoutId);
-        const error = err;
-        // Handle abort error specifically (timeout)
-        if (error.name === 'AbortError') {
-            return {
-                success: false,
-                error: `Request timeout: GitHub API did not respond within ${FETCH_TIMEOUT_MS}ms`,
-                timestamp,
-            };
-        }
-        return {
-            success: false,
-            error: `Network error: ${error.message}`,
-            timestamp,
-        };
-    }
-}
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-/**
- * Validates that a sample has the expected shape.
- * Used for defensive parsing.
- */
-function isValidSample(sample) {
-    if (!isARealObject(sample)) {
-        return false;
-    }
-    const requiredFields = ['limit', 'used', 'remaining', 'reset'];
-    return requiredFields.every((field) => typeof sample[field] === 'number');
-}
-/**
- * Parses raw API response into typed RateLimitResponse.
- * Returns null if parsing fails.
- */
-function parseRateLimitResponse(raw) {
-    if (!isARealObject(raw) || !isARealObject(raw['resources'])) {
-        return null;
-    }
-    const resources = {};
-    for (const [key, value] of Object.entries(raw['resources'])) {
-        if (!isValidSample(value)) {
-            continue; // Skip invalid resources instead of failing the entire response
-        }
-        resources[key] = value;
-    }
-    // Use rate if valid, otherwise fall back to resources.core
-    const rawRate = raw['rate'];
-    if (isValidSample(rawRate)) {
-        return { resources, rate: rawRate };
-    }
-    const coreResource = resources['core'];
-    if (coreResource) {
-        return { resources, rate: coreResource };
-    }
-    return null;
-}
-
-;// CONCATENATED MODULE: ./src/output.ts
-/**
- * Output Renderer
- * Layer: infra
- *
- * Provided ports:
- *   - output.render
- *
- * Generates summary for GitHub step summary and console.
- */
-
-/**
- * Renders the summary data to markdown and console formats.
- *
- * @param data - Summary data to render
- */
-function render(data) {
-    const markdown = renderMarkdown(data);
-    const consoleText = renderConsole(data);
-    return { markdown, console: consoleText };
-}
-// -----------------------------------------------------------------------------
-// Markdown rendering
-// -----------------------------------------------------------------------------
-/**
- * Renders full markdown summary for $GITHUB_STEP_SUMMARY.
- */
-function renderMarkdown(data) {
-    const { state, duration_seconds, warnings } = data;
-    const lines = [];
-    // Header
-    lines.push('## GitHub API Usage (Monitor) — Job Summary');
-    lines.push('');
-    // Duration and poll info
-    const duration = formatDuration(duration_seconds);
-    lines.push(`**Duration:** ${duration} | **Polls:** ${state.poll_count} | **Failures:** ${state.poll_failures}`);
-    lines.push('');
-    // Bucket table — only show buckets with actual usage
-    const activeBuckets = getActiveBuckets(state);
-    if (activeBuckets.length > 0) {
-        lines.push('| Bucket | Used (job) | Windows | Remaining | Resets at (UTC) |');
-        lines.push('|--------|----------:|--------:|----------:|-----------------|');
-        for (const [name, bucket] of activeBuckets) {
-            const resetTime = formatResetTime(bucket.last_reset);
-            lines.push(`| ${name} | ${bucket.total_used} | ${bucket.windows_crossed} | ${bucket.remaining} | ${resetTime} |`);
-        }
-        lines.push('');
-    }
-    else {
-        lines.push('*No API usage detected during this job.*');
-        lines.push('');
-    }
-    // Warnings
-    if (warnings.length > 0) {
-        lines.push('### Warnings');
-        lines.push('');
-        for (const warning of warnings) {
-            lines.push(`- ${warning}`);
-        }
-        lines.push('');
-    }
-    return lines.join('\n');
-}
-// -----------------------------------------------------------------------------
-// Console rendering
-// -----------------------------------------------------------------------------
-/**
- * Renders concise console output.
- */
-function renderConsole(data) {
-    const { state, duration_seconds, warnings } = data;
-    const lines = [];
-    // One-line summary
-    const duration = formatDuration(duration_seconds);
-    const totalUsed = Object.values(state.buckets).reduce((sum, b) => sum + b.total_used, 0);
-    lines.push(`GitHub API Usage: ${totalUsed} requests in ${duration} (${state.poll_count} polls)`);
-    // Top 3 buckets
-    const buckets = getSortedBuckets(state).slice(0, 3);
-    if (buckets.length > 0) {
-        lines.push('Top buckets:');
-        for (const [name, bucket] of buckets) {
-            lines.push(`  - ${name}: ${bucket.total_used} used, ${bucket.remaining} remaining`);
-        }
-    }
-    // Warnings (abbreviated)
-    if (warnings.length > 0) {
-        lines.push(`Warnings: ${warnings.length}`);
-    }
-    return lines.join('\n');
-}
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-/**
- * Returns buckets sorted by total_used descending.
- */
-function getSortedBuckets(state) {
-    return Object.entries(state.buckets).sort((a, b) => b[1].total_used - a[1].total_used);
-}
-/**
- * Returns only buckets with actual usage (total_used > 0), sorted by total_used descending.
- * Idle buckets (total_used = 0) are filtered out to keep the summary clean.
- */
-function getActiveBuckets(state) {
-    return getSortedBuckets(state).filter(([, bucket]) => bucket.total_used > 0);
-}
-/**
- * Formats duration in human-readable form.
- */
-function formatDuration(seconds) {
-    if (seconds < 60) {
-        return `${seconds}s`;
-    }
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    if (minutes < 60) {
-        return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-}
-/**
- * Formats reset epoch as UTC timestamp.
- */
-function formatResetTime(epoch) {
-    return new Date(epoch * 1000).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
-}
-// -----------------------------------------------------------------------------
-// GitHub Step Summary
-// -----------------------------------------------------------------------------
-/**
- * Writes markdown to GitHub step summary.
- */
-function writeStepSummary(markdown) {
-    const summaryPath = process.env['GITHUB_STEP_SUMMARY'];
-    if (summaryPath) {
-        external_fs_namespaceObject.appendFileSync(summaryPath, markdown + '\n');
-    }
-}
-// -----------------------------------------------------------------------------
-// Warning generation
-// -----------------------------------------------------------------------------
-/**
- * Generates warnings based on state analysis.
- */
-function generateWarnings(state) {
-    const warnings = [];
-    // Poll failures
-    if (state.poll_failures > 0) {
-        warnings.push(`${state.poll_failures} poll(s) failed during monitoring`);
-    }
-    // Anomalies
-    const totalAnomalies = Object.values(state.buckets).reduce((sum, b) => sum + b.anomalies, 0);
-    if (totalAnomalies > 0) {
-        warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset)`);
-    }
-    // Multiple window crosses (only for active buckets — idle buckets rotate windows harmlessly)
-    for (const [name, bucket] of Object.entries(state.buckets)) {
-        if (bucket.windows_crossed > 1 && bucket.total_used > 0) {
-            warnings.push(`${name} window crossed ${bucket.windows_crossed} times; totals are interval-bounded`);
-        }
-    }
-    // Last error
-    if (state.last_error) {
-        warnings.push(`Last error: ${state.last_error}`);
-    }
-    return warnings;
-}
-
-;// CONCATENATED MODULE: ./src/post.ts
-/**
- * Post Entry
- * Layer: action
- *
- * GitHub Action post entry point for cleanup and reporting.
- * Runs automatically after job completes (via action.yml post-if: always()).
- *
- * Required ports:
- *   - poller.kill
- *   - state.read
- *   - output.render
- */
-
-
-
-
-
-
-
-
-
-// -----------------------------------------------------------------------------
-// Post entry point
-// -----------------------------------------------------------------------------
-async function run() {
-    try {
-        await handlePost();
-    }
-    catch (error) {
-        const err = error;
-        setFailed(err.message);
-    }
-}
-// -----------------------------------------------------------------------------
-// Post handler (cleanup and report)
-// -----------------------------------------------------------------------------
-async function handlePost() {
-    info('Stopping GitHub API usage monitor...');
-    const warnings = [];
-    const token = getInput('token') || process.env['GITHUB_TOKEN'];
-    if (token) {
-        core_setSecret(token);
-    }
-    // Check platform (warn but continue)
-    const platformInfo = isSupported();
-    if (!platformInfo.supported) {
-        warnings.push(`Unsupported platform: ${platformInfo.reason}`);
-    }
-    // Read PID and kill poller with verification
-    const pid = readPid();
-    if (pid) {
-        const killResult = await killPollerWithVerification(pid);
-        if (!killResult.success) {
-            if (killResult.notFound) {
-                warnings.push('Poller process not found (may have exited)');
-            }
-            else {
-                warnings.push(`Failed to kill poller: ${killResult.error}`);
-            }
-        }
-        else if (killResult.escalated) {
-            warnings.push('Poller required SIGKILL (did not respond to SIGTERM)');
-        }
-        removePid();
-    }
-    else {
-        warnings.push('No PID file found (monitor may not have started)');
-    }
-    // Read final state
-    const statePath = getStatePath();
-    const pollLogPath = paths_getPollLogPath();
-    info(`State path: ${statePath}`);
-    info(`Poll log path: ${pollLogPath}`);
-    const stateResult = state_readState();
-    if (!stateResult.success) {
-        if (stateResult.notFound) {
-            warning('No state file found. Monitor may not have started or state was lost.');
-            const pollLog = readPollLog();
-            const emptyState = {};
-            const stateJson = JSON.stringify(emptyState);
-            const pollLogJson = JSON.stringify(pollLog);
-            setOutput('state_json', stateJson);
-            setOutput('poll_log_json', pollLogJson);
-            info(`Outputs set (missing state): state_json bytes=${stateJson.length}, ` +
-                `poll_log_json bytes=${pollLogJson.length}, poll_log entries=${pollLog.length}`);
-            return;
-        }
-        throw new Error(`Failed to read state: ${stateResult.error}`);
-    }
-    // Optional final poll to capture last usage before shutdown
-    let finalState = stateResult.state;
-    if (token) {
-        info('Performing final API poll...');
-        const finalPoll = await github_fetchRateLimit(token);
-        if (finalPoll.success) {
-            const reduceResult = reducer_reduce(finalState, finalPoll.data, finalPoll.timestamp);
-            finalState = reduceResult.state;
-        }
-        else {
-            warnings.push(`Final poll failed: ${finalPoll.error}`);
-        }
-    }
-    else {
-        warnings.push('No token available for final poll');
-    }
-    // Mark as stopped
-    finalState = reducer_markStopped(finalState);
-    state_writeState(finalState);
-    // Debug: dump per-bucket state for self-test analysis
-    info('--- Debug: per-bucket state ---');
-    info(`Poll count: ${finalState.poll_count} | Failures: ${finalState.poll_failures}`);
-    info(`Started: ${finalState.started_at_ts} | Stopped: ${finalState.stopped_at_ts}`);
-    for (const [name, bucket] of Object.entries(finalState.buckets)) {
-        info(`  ${name}: first_used=${bucket.first_used}, last_used=${bucket.last_used}, ` +
-            `total_used=${bucket.total_used}, windows_crossed=${bucket.windows_crossed}, ` +
-            `last_reset=${bucket.last_reset}, remaining=${bucket.remaining}, limit=${bucket.limit}`);
-    }
-    info('--- End debug ---');
-    // Calculate duration
-    const startTime = new Date(finalState.started_at_ts).getTime();
-    const endTime = finalState.stopped_at_ts
-        ? new Date(finalState.stopped_at_ts).getTime()
-        : Date.now();
-    const durationSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
-    // Generate state-based warnings
-    const stateWarnings = generateWarnings(finalState);
-    warnings.push(...stateWarnings);
-    // Render output
-    const summaryData = {
-        state: finalState,
-        duration_seconds: durationSeconds,
-        warnings,
-    };
-    const { markdown, console: consoleText } = render(summaryData);
-    // Output
-    info(consoleText);
-    writeStepSummary(markdown);
-    // Expose finalized state and poll log as action outputs for downstream diagnostics jobs
-    const pollLog = readPollLog();
-    const stateJson = JSON.stringify(finalState);
-    const pollLogJson = JSON.stringify(pollLog);
-    setOutput('state_json', stateJson);
-    setOutput('poll_log_json', pollLogJson);
-    info(`Outputs set: state_json bytes=${stateJson.length}, ` +
-        `poll_log_json bytes=${pollLogJson.length}, poll_log entries=${pollLog.length}`);
-    info('Monitor stopped');
-}
-// -----------------------------------------------------------------------------
-// Run
-// -----------------------------------------------------------------------------
-void run();
-
+/******/ });
+/************************************************************************/
+/******/ // The module cache
+/******/ var __webpack_module_cache__ = {};
+/******/ 
+/******/ // The require function
+/******/ function __nccwpck_require__(moduleId) {
+/******/ 	// Check if module is in cache
+/******/ 	var cachedModule = __webpack_module_cache__[moduleId];
+/******/ 	if (cachedModule !== undefined) {
+/******/ 		return cachedModule.exports;
+/******/ 	}
+/******/ 	// Create a new module (and put it into the cache)
+/******/ 	var module = __webpack_module_cache__[moduleId] = {
+/******/ 		// no module.id needed
+/******/ 		// no module.loaded needed
+/******/ 		exports: {}
+/******/ 	};
+/******/ 
+/******/ 	// Execute the module function
+/******/ 	var threw = true;
+/******/ 	try {
+/******/ 		__webpack_modules__[moduleId](module, module.exports, __nccwpck_require__);
+/******/ 		threw = false;
+/******/ 	} finally {
+/******/ 		if(threw) delete __webpack_module_cache__[moduleId];
+/******/ 	}
+/******/ 
+/******/ 	// Return the exports of the module
+/******/ 	return module.exports;
+/******/ }
+/******/ 
+/************************************************************************/
+/******/ /* webpack/runtime/async module */
+/******/ (() => {
+/******/ 	var webpackQueues = typeof Symbol === "function" ? Symbol("webpack queues") : "__webpack_queues__";
+/******/ 	var webpackExports = typeof Symbol === "function" ? Symbol("webpack exports") : "__webpack_exports__";
+/******/ 	var webpackError = typeof Symbol === "function" ? Symbol("webpack error") : "__webpack_error__";
+/******/ 	var resolveQueue = (queue) => {
+/******/ 		if(queue && queue.d < 1) {
+/******/ 			queue.d = 1;
+/******/ 			queue.forEach((fn) => (fn.r--));
+/******/ 			queue.forEach((fn) => (fn.r-- ? fn.r++ : fn()));
+/******/ 		}
+/******/ 	}
+/******/ 	var wrapDeps = (deps) => (deps.map((dep) => {
+/******/ 		if(dep !== null && typeof dep === "object") {
+/******/ 			if(dep[webpackQueues]) return dep;
+/******/ 			if(dep.then) {
+/******/ 				var queue = [];
+/******/ 				queue.d = 0;
+/******/ 				dep.then((r) => {
+/******/ 					obj[webpackExports] = r;
+/******/ 					resolveQueue(queue);
+/******/ 				}, (e) => {
+/******/ 					obj[webpackError] = e;
+/******/ 					resolveQueue(queue);
+/******/ 				});
+/******/ 				var obj = {};
+/******/ 				obj[webpackQueues] = (fn) => (fn(queue));
+/******/ 				return obj;
+/******/ 			}
+/******/ 		}
+/******/ 		var ret = {};
+/******/ 		ret[webpackQueues] = x => {};
+/******/ 		ret[webpackExports] = dep;
+/******/ 		return ret;
+/******/ 	}));
+/******/ 	__nccwpck_require__.a = (module, body, hasAwait) => {
+/******/ 		var queue;
+/******/ 		hasAwait && ((queue = []).d = -1);
+/******/ 		var depQueues = new Set();
+/******/ 		var exports = module.exports;
+/******/ 		var currentDeps;
+/******/ 		var outerResolve;
+/******/ 		var reject;
+/******/ 		var promise = new Promise((resolve, rej) => {
+/******/ 			reject = rej;
+/******/ 			outerResolve = resolve;
+/******/ 		});
+/******/ 		promise[webpackExports] = exports;
+/******/ 		promise[webpackQueues] = (fn) => (queue && fn(queue), depQueues.forEach(fn), promise["catch"](x => {}));
+/******/ 		module.exports = promise;
+/******/ 		body((deps) => {
+/******/ 			currentDeps = wrapDeps(deps);
+/******/ 			var fn;
+/******/ 			var getResult = () => (currentDeps.map((d) => {
+/******/ 				if(d[webpackError]) throw d[webpackError];
+/******/ 				return d[webpackExports];
+/******/ 			}))
+/******/ 			var promise = new Promise((resolve) => {
+/******/ 				fn = () => (resolve(getResult));
+/******/ 				fn.r = 0;
+/******/ 				var fnQueue = (q) => (q !== queue && !depQueues.has(q) && (depQueues.add(q), q && !q.d && (fn.r++, q.push(fn))));
+/******/ 				currentDeps.map((dep) => (dep[webpackQueues](fnQueue)));
+/******/ 			});
+/******/ 			return fn.r ? promise : getResult();
+/******/ 		}, (err) => ((err ? reject(promise[webpackError] = err) : outerResolve(exports)), resolveQueue(queue)));
+/******/ 		queue && queue.d < 0 && (queue.d = 0);
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/compat get default export */
+/******/ (() => {
+/******/ 	// getDefaultExport function for compatibility with non-harmony modules
+/******/ 	__nccwpck_require__.n = (module) => {
+/******/ 		var getter = module && module.__esModule ?
+/******/ 			() => (module['default']) :
+/******/ 			() => (module);
+/******/ 		__nccwpck_require__.d(getter, { a: getter });
+/******/ 		return getter;
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/define property getters */
+/******/ (() => {
+/******/ 	// define getter functions for harmony exports
+/******/ 	__nccwpck_require__.d = (exports, definition) => {
+/******/ 		for(var key in definition) {
+/******/ 			if(__nccwpck_require__.o(definition, key) && !__nccwpck_require__.o(exports, key)) {
+/******/ 				Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
+/******/ 			}
+/******/ 		}
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/hasOwnProperty shorthand */
+/******/ (() => {
+/******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/compat */
+/******/ 
+/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = new URL('.', import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
+/******/ 
+/************************************************************************/
+/******/ 
+/******/ // startup
+/******/ // Load entry module and return exports
+/******/ // This entry module used 'module' so it can't be inlined
+/******/ var __webpack_exports__ = __nccwpck_require__(6661);
+/******/ __webpack_exports__ = await __webpack_exports__;
+/******/ 

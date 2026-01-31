@@ -171,4 +171,5 @@ async function handlePost(): Promise<void> {
 // Run
 // -----------------------------------------------------------------------------
 
-void run();
+// void run();
+await run();
