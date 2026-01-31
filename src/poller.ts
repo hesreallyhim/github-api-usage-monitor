@@ -57,8 +57,7 @@ export function spawnPoller(token: string): SpawnOutcome {
     const baseDir = actionPath
       ? path.resolve(actionPath, 'dist')
       : path.dirname(process.argv[1] ?? '');
-    const separator = baseDir.endsWith(path.sep) ? '' : path.sep;
-    const pollerEntry = `${baseDir}${separator}poller${path.sep}index.js`;
+    const pollerEntry = path.join(baseDir, 'poller', 'index.js');
 
     const child: ChildProcess = spawn(process.execPath, [pollerEntry], {
       detached: true,

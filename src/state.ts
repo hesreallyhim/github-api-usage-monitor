@@ -44,8 +44,6 @@ export function readState(): ReadStateOutcome {
     const content = fs.readFileSync(statePath, 'utf-8');
     const parsed = JSON.parse(content) as unknown;
 
-    // TODO: Validate parsed state has correct shape
-    // For now, trust the structure
     if (!isValidState(parsed)) {
       return {
         success: false,
@@ -156,6 +154,13 @@ export function isValidState(obj: unknown): obj is ReducerState {
     return false;
   }
 
+  // Validate each bucket entry
+  for (const value of Object.values(obj['buckets'])) {
+    if (!isValidBucketState(value)) {
+      return false;
+    }
+  }
+
   // Optional fields: must be string | null
   if (!isStringOrNull(obj['stopped_at_ts'])) {
     return false;
@@ -167,6 +172,35 @@ export function isValidState(obj: unknown): obj is ReducerState {
     return false;
   }
 
+  return true;
+}
+
+/**
+ * Validates that a value has the BucketState shape.
+ */
+function isValidBucketState(value: unknown): boolean {
+  if (!isARealObject(value)) {
+    return false;
+  }
+  const numericFields = [
+    'last_reset',
+    'last_used',
+    'total_used',
+    'windows_crossed',
+    'anomalies',
+    'limit',
+    'remaining',
+    'first_used',
+    'first_remaining',
+  ];
+  for (const field of numericFields) {
+    if (typeof value[field] !== 'number') {
+      return false;
+    }
+  }
+  if (typeof value['last_seen_ts'] !== 'string') {
+    return false;
+  }
   return true;
 }
 

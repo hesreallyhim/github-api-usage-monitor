@@ -119,7 +119,7 @@ describe('parseRateLimitResponse', () => {
     expect(parseRateLimitResponse({ rate: {} })).toBeNull();
   });
 
-  it('returns null for invalid resource sample', () => {
+  it('returns null when all resources are invalid and rate is invalid', () => {
     expect(
       parseRateLimitResponse({
         resources: { core: { limit: 'invalid' } },

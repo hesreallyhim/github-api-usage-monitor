@@ -30974,8 +30974,6 @@ function state_readState() {
     try {
         const content = external_fs_namespaceObject.readFileSync(statePath, 'utf-8');
         const parsed = JSON.parse(content);
-        // TODO: Validate parsed state has correct shape
-        // For now, trust the structure
         if (!isValidState(parsed)) {
             return {
                 success: false,
@@ -31064,6 +31062,12 @@ function isValidState(obj) {
     if (typeof obj['poll_failures'] !== 'number') {
         return false;
     }
+    // Validate each bucket entry
+    for (const value of Object.values(obj['buckets'])) {
+        if (!isValidBucketState(value)) {
+            return false;
+        }
+    }
     // Optional fields: must be string | null
     if (!isStringOrNull(obj['stopped_at_ts'])) {
         return false;
@@ -31072,6 +31076,34 @@ function isValidState(obj) {
         return false;
     }
     if (!isStringOrNull(obj['last_error'])) {
+        return false;
+    }
+    return true;
+}
+/**
+ * Validates that a value has the BucketState shape.
+ */
+function isValidBucketState(value) {
+    if (!isARealObject(value)) {
+        return false;
+    }
+    const numericFields = [
+        'last_reset',
+        'last_used',
+        'total_used',
+        'windows_crossed',
+        'anomalies',
+        'limit',
+        'remaining',
+        'first_used',
+        'first_remaining',
+    ];
+    for (const field of numericFields) {
+        if (typeof value[field] !== 'number') {
+            return false;
+        }
+    }
+    if (typeof value['last_seen_ts'] !== 'string') {
         return false;
     }
     return true;
@@ -31255,8 +31287,7 @@ function spawnPoller(token) {
         const baseDir = actionPath
             ? path.resolve(actionPath, 'dist')
             : path.dirname(process.argv[1] ?? '');
-        const separator = baseDir.endsWith(path.sep) ? '' : path.sep;
-        const pollerEntry = `${baseDir}${separator}poller${path.sep}index.js`;
+        const pollerEntry = path.join(baseDir, 'poller', 'index.js');
         const child = spawn(process.execPath, [pollerEntry], {
             detached: true,
             stdio: 'ignore',
@@ -31883,7 +31914,7 @@ function parseRateLimitResponse(raw) {
     const resources = {};
     for (const [key, value] of Object.entries(raw['resources'])) {
         if (!isValidSample(value)) {
-            return null;
+            continue; // Skip invalid resources instead of failing the entire response
         }
         resources[key] = value;
     }

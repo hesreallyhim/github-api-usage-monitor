@@ -140,7 +140,7 @@ export function parseRateLimitResponse(raw: unknown): RateLimitResponse | null {
 
   for (const [key, value] of Object.entries(raw['resources'])) {
     if (!isValidSample(value)) {
-      return null;
+      continue; // Skip invalid resources instead of failing the entire response
     }
     resources[key] = value;
   }
