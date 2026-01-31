@@ -23,6 +23,7 @@ export default defineConfig(
             'test/integration/*.ts',
             'vitest.config.ts',
             'vitest.integration.config.ts',
+            'scripts/*.mjs',
           ],
           defaultProject: 'tsconfig.test.json',
         },
