@@ -5,6 +5,9 @@ import globals from 'globals';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default defineConfig(
+  {
+    ignores: ['dist/', 'node_modules/', '*.js', '*.cjs', '*.mjs', 'eslint.config.js'],
+  },
   eslint.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
   eslintConfigPrettier,
@@ -33,8 +36,5 @@ export default defineConfig(
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/strict-boolean-expressions': 'off',
     },
-  },
-  {
-    ignores: ['dist/', 'node_modules/', '*.js', '*.cjs', '*.mjs', 'eslint.config.js'],
   }
 );
