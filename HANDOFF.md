@@ -1,8 +1,8 @@
 # HANDOFF — github-api-usage-monitor
 
-**Date:** 2026-01-25
-**Branch:** `build-spec`
-**Status:** v1 implementation complete, ready for integration testing
+**Date:** 2026-01-31
+**Branch:** `claude`
+**Status:** v1 implementation complete, self-test suite operational, code review fixes applied
 
 ---
 
@@ -32,39 +32,45 @@ A GitHub Action that monitors API rate-limit usage during a workflow job by poll
 
 ### Test Status
 
-- **67 tests passing** across 4 test files
-- TypeScript: clean
-- ESLint: clean
-- Build: `dist/main.js` (991KB) + `dist/poller/index.js` (28KB)
+- **128 tests passing** across 6 test files
+- TypeScript: clean (strict mode)
+- ESLint: clean (`no-explicit-any` enforced)
+- Build: 4 ncc bundles — `dist/main.js`, `dist/pre.js`, `dist/post.js`, `dist/poller/index.js`
 
 ---
 
 ## Architecture Summary
 
 ```
-Workflow Step: start
+pre.ts → start.ts (action.yml pre hook)
     │
     ├── Validate platform (Linux/macOS only)
     ├── Initial poll to /rate_limit (fail-fast token validation)
     ├── Create initial state with baseline
     ├── Spawn detached poller process
-    └── Write PID to $RUNNER_TEMP
+    ├── Write PID to $RUNNER_TEMP
+    └── Verify poller startup (poll state.json for poller_started_at_ts)
 
-Poller (background, every 30s)
+Poller (detached child process, adaptive interval)
     │
     ├── GET /rate_limit
     ├── Reduce: calculate deltas per bucket
     │   ├── Same window: delta = used - last_used
     │   ├── New window: total += used (post-reset)
     │   └── Anomaly: used decreased without reset
-    └── Atomic write state.json
+    ├── Atomic write state.json
+    └── Append to poll-log.jsonl (diagnostic JSONL log)
 
-Workflow Step: stop (always)
+main.ts (no-op, required by action.yml)
+
+post.ts (action.yml post hook, runs always)
     │
-    ├── Kill poller by PID (SIGTERM)
+    ├── Kill poller by PID (SIGTERM → SIGKILL escalation)
+    ├── Perform final API poll
     ├── Read final state
     ├── Generate warnings
-    └── Render summary to $GITHUB_STEP_SUMMARY + console
+    ├── Render summary to $GITHUB_STEP_SUMMARY + console
+    └── Expose state_json and poll_log_json as action outputs
 ```
 
 ---
@@ -107,23 +113,20 @@ See `docs/planning/IMPL-PLAN-declarative-self-test.md` for full design.
 
 ## Next Steps
 
-1. **Verify self-test workflow** — Run via workflow_dispatch on GitHub and confirm all 12 scenarios produce expected state.json output
-2. **Consider test isolation** — Dedicated repo or reserved token to avoid cross-workflow rate-limit noise
-3. **Test edge cases**:
-   - Token with no permissions
-   - Very short job (< 30s)
-   - Multiple window resets during job
+1. **Write README.md** — Usage examples, inputs/outputs reference, example summary output
+2. **Increase test coverage** — poller lifecycle (20%), post.ts (0%), pre.ts (0%), poll-log.ts (0%)
+3. **Consider test isolation** — Dedicated repo or reserved token to avoid cross-workflow rate-limit noise
 4. **Consider adding**:
-   - Debug log file for poller (currently silent)
    - `report_buckets` input for filtering output (v2)
+   - Threshold-based alerting (warn/fail when usage exceeds percentage)
 
 ---
 
-## Outstanding Questions
+## Resolved Questions
 
-1. **Poller log file** — Should the poller write debug logs to a file? Currently uses `stdio: 'ignore'`. Could add `$RUNNER_TEMP/github-api-usage-monitor/poller.log`.
+1. **Poller log file** — Resolved: poller writes diagnostic JSONL to `$RUNNER_TEMP/github-api-usage-monitor/poll-log.jsonl` via `poll-log.ts`. Exposed as `poll_log_json` action output.
 
-2. **dist/ in repo** — Should `dist/` be committed to the repo (common for Actions) or generated on release? Currently gitignored.
+2. **dist/ in repo** — Resolved: `dist/` is committed to git. Pre-commit hook verifies it stays in sync after `build:all`. CI also verifies.
 
 ---
 
