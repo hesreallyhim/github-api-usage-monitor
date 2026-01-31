@@ -175,7 +175,7 @@ export function isValidState(obj: unknown): obj is ReducerState {
 // -----------------------------------------------------------------------------
 
 import { getPidPath } from './paths';
-import { isARealObject, isStringOrNull } from './utils';
+import { isARealObject, isStringOrNull, sleep } from './utils';
 
 /**
  * Writes the poller PID to disk.
@@ -273,8 +273,4 @@ export async function verifyPollerStartup(
     success: false,
     error: `Poller did not signal startup within ${timeoutMs}ms`,
   };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

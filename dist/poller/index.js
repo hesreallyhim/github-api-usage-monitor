@@ -36,7 +36,7 @@ const MAX_LIFETIME_MS = 6 * 60 * 60 * 1000;
  * Checks if input is an object and not null.
  */
 const isARealObject = (value) => {
-    return typeof value === 'object' && value !== null;
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 };
 /**
  * Checks if input is a string or null.
@@ -45,6 +45,12 @@ const isARealObject = (value) => {
 const isStringOrNull = (value) => {
     return value === null || typeof value === 'string';
 };
+/**
+ * Returns a promise that resolves after the given milliseconds.
+ */
+function utils_sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 ;// CONCATENATED MODULE: ./src/github.ts
 /**
@@ -666,9 +672,6 @@ async function verifyPollerStartup(timeoutMs = STARTUP_TIMEOUT_MS) {
         error: `Poller did not signal startup within ${timeoutMs}ms`,
     };
 }
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 ;// CONCATENATED MODULE: ./src/poll-log.ts
 /**
@@ -745,6 +748,7 @@ function readPollLog() {
  *   - Updates state file atomically
  *   - Handles SIGTERM for graceful shutdown
  */
+
 
 
 
@@ -844,7 +848,7 @@ async function killPollerWithVerification(pid) {
     // Wait for process to die
     const startTime = Date.now();
     while (Date.now() - startTime < KILL_TIMEOUT_MS) {
-        await poller_sleep(KILL_CHECK_INTERVAL_MS);
+        await sleep(KILL_CHECK_INTERVAL_MS);
         if (!isProcessRunning(pid)) {
             return { success: true, escalated: false };
         }
@@ -852,7 +856,7 @@ async function killPollerWithVerification(pid) {
     // Escalate to SIGKILL
     try {
         process.kill(pid, 'SIGKILL');
-        await poller_sleep(KILL_CHECK_INTERVAL_MS);
+        await sleep(KILL_CHECK_INTERVAL_MS);
         if (!isProcessRunning(pid)) {
             return { success: true, escalated: true };
         }
@@ -874,9 +878,6 @@ function isProcessRunning(pid) {
     catch {
         return false;
     }
-}
-function poller_sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 const BURST_THRESHOLD_S = 8;
 const PRE_RESET_BUFFER_S = 3;
@@ -999,10 +1000,10 @@ async function runPollerLoop(token, intervalSeconds) {
         }
         const rawPlan = computeSleepPlan(state, intervalSeconds * 1000, Math.floor(Date.now() / 1000));
         const plan = applyDebounce(rawPlan, POLL_DEBOUNCE_MS);
-        await poller_sleep(plan.sleepMs);
+        await utils_sleep(plan.sleepMs);
         state = await performPoll(state, token);
         if (plan.burst) {
-            await poller_sleep(plan.burstGapMs);
+            await utils_sleep(plan.burstGapMs);
             state = await performPoll(state, token);
         }
     }

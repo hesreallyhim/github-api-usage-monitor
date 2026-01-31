@@ -25,6 +25,7 @@ import { reduce, recordFailure, createInitialState, markStopped } from './reduce
 import type { ReduceResult } from './reducer';
 import { readState, writeState } from './state';
 import { appendPollLogEntry } from './poll-log';
+import { sleep } from './utils';
 
 // -----------------------------------------------------------------------------
 // Port: poller.spawn
@@ -191,10 +192,6 @@ function isProcessRunning(pid: number): boolean {
   } catch {
     return false;
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // -----------------------------------------------------------------------------

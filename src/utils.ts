@@ -2,7 +2,7 @@
  * Checks if input is an object and not null.
  */
 export const isARealObject = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 };
 
 /**
@@ -12,3 +12,10 @@ export const isARealObject = (value: unknown): value is Record<string, unknown> 
 export const isStringOrNull = (value: unknown): value is string | null => {
   return value === null || typeof value === 'string';
 };
+
+/**
+ * Returns a promise that resolves after the given milliseconds.
+ */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

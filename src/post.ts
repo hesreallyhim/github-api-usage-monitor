@@ -122,7 +122,7 @@ async function handlePost(): Promise<void> {
   core.info(`Started: ${finalState.started_at_ts} | Stopped: ${finalState.stopped_at_ts}`);
   for (const [name, bucket] of Object.entries(finalState.buckets)) {
     core.info(
-      `  ${name}: used=${bucket.last_used}, last_used=${bucket.last_used}, ` +
+      `  ${name}: first_used=${bucket.first_used}, last_used=${bucket.last_used}, ` +
         `total_used=${bucket.total_used}, windows_crossed=${bucket.windows_crossed}, ` +
         `last_reset=${bucket.last_reset}, remaining=${bucket.remaining}, limit=${bucket.limit}`,
     );
