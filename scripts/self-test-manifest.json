@@ -1,0 +1,341 @@
+{
+  "scenarios": [
+    {
+      "id": "baseline",
+      "name": "Baseline — zero calls",
+      "endpoint_calls": [],
+      "inter_call_sleep_s": 0,
+      "poll_duration_s": 90,
+      "expected": {}
+    },
+    {
+      "id": "core-5",
+      "name": "5 core GET calls",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          "calls": 5
+        }
+      ],
+      "inter_call_sleep_s": 2,
+      "poll_duration_s": 90,
+      "expected": {
+        "core": {
+          "total_used_delta": 5,
+          "windows_crossed_max": 0
+        }
+      }
+    },
+    {
+      "id": "core-10",
+      "name": "10 core GET calls",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          "calls": 10
+        }
+      ],
+      "inter_call_sleep_s": 1,
+      "poll_duration_s": 90,
+      "expected": {
+        "core": {
+          "total_used_delta": 10,
+          "windows_crossed_max": 0
+        }
+      }
+    },
+    {
+      "id": "search-2",
+      "name": "2 search calls",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/search/repositories?q=test",
+            "method": "GET",
+            "bucket": "search"
+          },
+          "calls": 2
+        }
+      ],
+      "inter_call_sleep_s": 3,
+      "poll_duration_s": 90,
+      "expected": {
+        "search": {
+          "total_used_delta": 2,
+          "windows_crossed_min": 1
+        }
+      }
+    },
+    {
+      "id": "code-search-2",
+      "name": "2 code_search calls",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/search/code?q=test+repo:${REPO}",
+            "method": "GET",
+            "bucket": "code_search"
+          },
+          "calls": 2
+        }
+      ],
+      "inter_call_sleep_s": 3,
+      "poll_duration_s": 90,
+      "expected": {
+        "code_search": {
+          "total_used_delta": 2,
+          "windows_crossed_min": 1
+        }
+      }
+    },
+    {
+      "id": "graphql-2",
+      "name": "2 GraphQL calls",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/graphql",
+            "method": "POST",
+            "body": "{\"query\":\"{ viewer { login } }\"}",
+            "contentType": "application/json",
+            "bucket": "graphql"
+          },
+          "calls": 2
+        }
+      ],
+      "inter_call_sleep_s": 3,
+      "poll_duration_s": 90,
+      "expected": {
+        "graphql": {
+          "total_used_delta": 2,
+          "windows_crossed_max": 0
+        }
+      }
+    },
+    {
+      "id": "mixed-small",
+      "name": "Mixed — 2 core + 2 search + 2 graphql",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          "calls": 2
+        },
+        {
+          "endpoint": {
+            "url": "https://api.github.com/search/repositories?q=test",
+            "method": "GET",
+            "bucket": "search"
+          },
+          "calls": 2
+        },
+        {
+          "endpoint": {
+            "url": "https://api.github.com/graphql",
+            "method": "POST",
+            "body": "{\"query\":\"{ viewer { login } }\"}",
+            "contentType": "application/json",
+            "bucket": "graphql"
+          },
+          "calls": 2
+        }
+      ],
+      "inter_call_sleep_s": 2,
+      "poll_duration_s": 120,
+      "expected": {
+        "core": {
+          "total_used_delta": 2,
+          "windows_crossed_max": 0
+        },
+        "search": {
+          "total_used_delta": 2,
+          "windows_crossed_min": 1
+        },
+        "graphql": {
+          "total_used_delta": 2,
+          "windows_crossed_max": 0
+        }
+      }
+    },
+    {
+      "id": "core-burst",
+      "name": "5 core GET calls — burst (no sleep)",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          "calls": 5
+        }
+      ],
+      "inter_call_sleep_s": 0,
+      "poll_duration_s": 90,
+      "expected": {
+        "core": {
+          "total_used_delta": 5,
+          "windows_crossed_max": 0
+        }
+      }
+    },
+    {
+      "id": "search-window-cross",
+      "name": "2 search calls — 65s apart (window crossing)",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/search/repositories?q=test",
+            "method": "GET",
+            "bucket": "search"
+          },
+          "calls": 2
+        }
+      ],
+      "inter_call_sleep_s": 65,
+      "poll_duration_s": 150,
+      "expected": {
+        "search": {
+          "total_used_delta": 2,
+          "windows_crossed_min": 2
+        }
+      }
+    },
+    {
+      "id": "idle-check",
+      "name": "Idle check — no calls, 120s observation",
+      "endpoint_calls": [],
+      "inter_call_sleep_s": 0,
+      "poll_duration_s": 120,
+      "expected": {}
+    },
+    {
+      "id": "core-then-search",
+      "name": "3 core + 2 search (sequential)",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          "calls": 3
+        },
+        {
+          "endpoint": {
+            "url": "https://api.github.com/search/repositories?q=test",
+            "method": "GET",
+            "bucket": "search"
+          },
+          "calls": 2
+        }
+      ],
+      "inter_call_sleep_s": 2,
+      "poll_duration_s": 120,
+      "expected": {
+        "core": {
+          "total_used_delta": 3,
+          "windows_crossed_max": 0
+        },
+        "search": {
+          "total_used_delta": 2,
+          "windows_crossed_min": 1
+        }
+      }
+    },
+    {
+      "id": "graphql-5",
+      "name": "5 GraphQL calls",
+      "endpoint_calls": [
+        {
+          "endpoint": {
+            "url": "https://api.github.com/graphql",
+            "method": "POST",
+            "body": "{\"query\":\"{ viewer { login } }\"}",
+            "contentType": "application/json",
+            "bucket": "graphql"
+          },
+          "calls": 5
+        }
+      ],
+      "inter_call_sleep_s": 2,
+      "poll_duration_s": 90,
+      "expected": {
+        "graphql": {
+          "total_used_delta": 5,
+          "windows_crossed_max": 0
+        }
+      }
+    },
+    {
+      "id": "realistic-5m",
+      "suite": "realistic",
+      "name": "Realistic mix — 5m steady traffic",
+      "endpoint_calls": [],
+      "inter_call_sleep_s": 0,
+      "poll_duration_s": 330,
+      "paced_plan": {
+        "duration_s": 300,
+        "tick_s": 8,
+        "sequence": [
+          {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          {
+            "url": "https://api.github.com/graphql",
+            "method": "POST",
+            "body": "{\"query\":\"{ viewer { login } }\"}",
+            "contentType": "application/json",
+            "bucket": "graphql"
+          },
+          {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          {
+            "url": "https://api.github.com/search/repositories?q=test",
+            "method": "GET",
+            "bucket": "search"
+          },
+          {
+            "url": "https://api.github.com/repos/${REPO}",
+            "method": "GET",
+            "bucket": "core"
+          },
+          {
+            "url": "https://api.github.com/graphql",
+            "method": "POST",
+            "body": "{\"query\":\"{ viewer { login } }\"}",
+            "contentType": "application/json",
+            "bucket": "graphql"
+          },
+          {
+            "url": "https://api.github.com/search/code?q=test+repo:${REPO}",
+            "method": "GET",
+            "bucket": "code_search"
+          }
+        ]
+      },
+      "expected": {}
+    }
+  ]
+}
