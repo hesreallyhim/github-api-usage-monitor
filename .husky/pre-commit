@@ -1,0 +1,9 @@
+command -v nvm >/dev/null 2>&1 && nvm use
+npm run lint
+npm run format:check
+npm run test
+npm run build:all
+git diff --exit-code -- dist || { echo "dist/ is out of date — run 'npm run build:all' and stage the changes"; exit 1; }
+npm run generate:self-test
+git diff --exit-code -- .github/workflows/self-test.yml .github/workflows/realistic-test.yml scripts/self-test-manifest.json || { echo "Self-test workflows are out of date — run 'npm run generate:self-test' and stage the changes"; exit 1; }
+npm run check-updates || true

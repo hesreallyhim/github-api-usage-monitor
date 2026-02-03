@@ -1,0 +1,27 @@
+name: github-api-usage-monitor
+description: Monitor GitHub API rate-limit usage during a job by polling /rate_limit.
+author: 'Really Him'
+
+branding:
+  icon: activity
+  color: gray-dark
+
+inputs:
+  token:
+    description: 'GitHub token (defaults to GITHUB_TOKEN)'
+    required: false
+    default: ${{ github.token }}
+  diagnostics:
+    description: 'Enable diagnostics logging and artifact upload (state.json + poll-log.json)'
+    required: false
+    default: 'false'
+  artifact_name:
+    description: 'Override diagnostics artifact name (only used when diagnostics enabled; defaults to github-api-usage-monitor-${GITHUB_JOB})'
+    required: false
+
+runs:
+  using: node20
+  pre: dist/pre.js
+  main: dist/main.js
+  post: dist/post.js
+  post-if: always()

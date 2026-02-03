@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22.x, 24.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build:all
+
+      - name: Verify dist is up to date
+        run: git diff --exit-code -- dist
+
+      - name: Generate self-test workflows
+        run: npm run generate:self-test
+
+      - name: Verify self-test workflows are up to date
+        run: git diff --exit-code -- .github/workflows/self-test.yml .github/workflows/realistic-test.yml scripts/self-test-manifest.json
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (unit)
+        run: npm run test:coverage
+
+  node-20:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build:all
+
+      - name: Verify dist is up to date
+        run: git diff --exit-code -- dist
+
+      - name: Generate self-test workflows
+        run: npm run generate:self-test
+
+      - name: Verify self-test workflows are up to date
+        run: git diff --exit-code -- .github/workflows/self-test.yml .github/workflows/realistic-test.yml scripts/self-test-manifest.json
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (unit + integration)
+        run: npm run test:all

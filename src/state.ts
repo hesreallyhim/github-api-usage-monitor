@@ -1,0 +1,310 @@
+/**
+ * State Manager
+ * Layer: core
+ *
+ * Provided ports:
+ *   - state.read
+ *   - state.write
+ *
+ * Manages persistent state in $RUNNER_TEMP.
+ * Uses atomic rename for safe writes.
+ */
+
+import * as fs from 'fs';
+import type { ReducerState } from './types';
+import { getStateDir, getStatePath, getStateTmpPath } from './paths';
+
+// -----------------------------------------------------------------------------
+// Port: state.read
+// -----------------------------------------------------------------------------
+
+export interface ReadStateResult {
+  success: true;
+  state: ReducerState;
+}
+
+export interface ReadStateError {
+  success: false;
+  error: string;
+  /** True if file doesn't exist (expected for first read) */
+  notFound: boolean;
+}
+
+export type ReadStateOutcome = ReadStateResult | ReadStateError;
+
+/**
+ * Reads reducer state from disk.
+ *
+ * @returns State or error with details
+ */
+export function readState(): ReadStateOutcome {
+  const statePath = getStatePath();
+
+  try {
+    const content = fs.readFileSync(statePath, 'utf-8');
+    const parsed = JSON.parse(content) as unknown;
+
+    if (!isValidState(parsed)) {
+      return {
+        success: false,
+        error: 'Invalid state structure',
+        notFound: false,
+      };
+    }
+
+    return { success: true, state: parsed };
+  } catch (err) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code === 'ENOENT') {
+      return {
+        success: false,
+        error: 'State file not found',
+        notFound: true,
+      };
+    }
+    return {
+      success: false,
+      error: `Failed to read state: ${error.message}`,
+      notFound: false,
+    };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Port: state.write
+// -----------------------------------------------------------------------------
+
+export interface WriteStateResult {
+  success: true;
+}
+
+export interface WriteStateError {
+  success: false;
+  error: string;
+}
+
+export type WriteStateOutcome = WriteStateResult | WriteStateError;
+
+/**
+ * Writes reducer state to disk atomically.
+ * Creates state directory if it doesn't exist.
+ * Cleans up temp file on failure to prevent orphaned files.
+ *
+ * @param state - State to persist
+ */
+export function writeState(state: ReducerState): WriteStateOutcome {
+  const stateDir = getStateDir();
+  const statePath = getStatePath();
+  const tmpPath = getStateTmpPath();
+
+  try {
+    // Ensure directory exists
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    // Write to temp file
+    const content = JSON.stringify(state, null, 2);
+    fs.writeFileSync(tmpPath, content, 'utf-8');
+
+    // Atomic rename
+    fs.renameSync(tmpPath, statePath);
+
+    return { success: true };
+  } catch (err) {
+    // Clean up temp file on failure to prevent orphaned files
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {
+      // Ignore cleanup errors - file may not exist
+    }
+    const error = err as Error;
+    return {
+      success: false,
+      error: `Failed to write state: ${error.message}`,
+    };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+/**
+ * Validates that parsed JSON has the ReducerState shape.
+ * Handles missing fields gracefully per spec (W4).
+ */
+export function isValidState(obj: unknown): obj is ReducerState {
+  if (!isARealObject(obj)) {
+    return false;
+  }
+
+  // Required fields
+  if (!isARealObject(obj['buckets'])) {
+    return false;
+  }
+  if (typeof obj['started_at_ts'] !== 'string') {
+    return false;
+  }
+  if (typeof obj['interval_seconds'] !== 'number') {
+    return false;
+  }
+  if (typeof obj['poll_count'] !== 'number') {
+    return false;
+  }
+  if (typeof obj['poll_failures'] !== 'number') {
+    return false;
+  }
+
+  // Validate each bucket entry
+  for (const value of Object.values(obj['buckets'])) {
+    if (!isValidBucketState(value)) {
+      return false;
+    }
+  }
+
+  // Optional fields: must be string | null
+  if (!isStringOrNull(obj['stopped_at_ts'])) {
+    return false;
+  }
+  if (!isStringOrNull(obj['poller_started_at_ts'])) {
+    return false;
+  }
+  if (!isStringOrNull(obj['last_error'])) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Validates that a value has the BucketState shape.
+ */
+function isValidBucketState(value: unknown): boolean {
+  if (!isARealObject(value)) {
+    return false;
+  }
+  const numericFields = [
+    'last_reset',
+    'last_used',
+    'total_used',
+    'windows_crossed',
+    'anomalies',
+    'limit',
+    'remaining',
+    'first_used',
+    'first_remaining',
+  ];
+  for (const field of numericFields) {
+    if (typeof value[field] !== 'number') {
+      return false;
+    }
+  }
+  if (typeof value['last_seen_ts'] !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+// -----------------------------------------------------------------------------
+// PID file management
+// -----------------------------------------------------------------------------
+
+import { getPidPath } from './paths';
+import { isARealObject, isStringOrNull, sleep } from './utils';
+
+/**
+ * Writes the poller PID to disk.
+ */
+export function writePid(pid: number): WriteStateOutcome {
+  const pidPath = getPidPath();
+  const stateDir = getStateDir();
+
+  try {
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(pidPath, String(pid), 'utf-8');
+    return { success: true };
+  } catch (err) {
+    const error = err as Error;
+    return {
+      success: false,
+      error: `Failed to write PID: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Reads the poller PID from disk.
+ */
+export function readPid(): number | null {
+  const pidPath = getPidPath();
+
+  try {
+    const content = fs.readFileSync(pidPath, 'utf-8');
+    const pid = parseInt(content.trim(), 10);
+    return isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Removes the PID file.
+ */
+export function removePid(): void {
+  const pidPath = getPidPath();
+  try {
+    fs.unlinkSync(pidPath);
+  } catch {
+    // Ignore errors - file may not exist
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Startup verification
+// -----------------------------------------------------------------------------
+
+const STARTUP_TIMEOUT_MS = 5000;
+const STARTUP_CHECK_INTERVAL_MS = 100;
+
+export interface VerifyStartupResult {
+  success: true;
+}
+
+export interface VerifyStartupError {
+  success: false;
+  error: string;
+}
+
+export type VerifyStartupOutcome = VerifyStartupResult | VerifyStartupError;
+
+/**
+ * Waits for the poller to signal startup by setting poller_started_at_ts.
+ *
+ * The poller writes this timestamp immediately on startup, before any API calls.
+ * This confirms:
+ *   - Process spawned successfully
+ *   - Environment variables were read
+ *   - File I/O is working
+ *
+ * @param timeoutMs - Maximum time to wait (default 5000ms)
+ * @returns Success or error with details
+ */
+export async function verifyPollerStartup(
+  timeoutMs: number = STARTUP_TIMEOUT_MS,
+): Promise<VerifyStartupOutcome> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const result = readState();
+
+    if (result.success && result.state.poller_started_at_ts !== null) {
+      return { success: true };
+    }
+
+    await sleep(STARTUP_CHECK_INTERVAL_MS);
+  }
+
+  return {
+    success: false,
+    error: `Poller did not signal startup within ${timeoutMs}ms`,
+  };
+}
