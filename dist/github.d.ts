@@ -13,10 +13,18 @@ export interface FetchRateLimitResult {
     data: RateLimitResponse;
     timestamp: string;
 }
+export interface RateLimitErrorDetails {
+    status: number;
+    message: string | null;
+    rate_limit_remaining: number | null;
+    rate_limit_reset: number | null;
+    retry_after_seconds: number | null;
+}
 export interface FetchRateLimitError {
     success: false;
     error: string;
     timestamp: string;
+    rate_limit?: RateLimitErrorDetails;
 }
 export type FetchRateLimitOutcome = FetchRateLimitResult | FetchRateLimitError;
 /**

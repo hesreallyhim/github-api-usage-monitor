@@ -28,10 +28,19 @@ export interface FetchRateLimitResult {
   timestamp: string;
 }
 
+export interface RateLimitErrorDetails {
+  status: number;
+  message: string | null;
+  rate_limit_remaining: number | null;
+  rate_limit_reset: number | null;
+  retry_after_seconds: number | null;
+}
+
 export interface FetchRateLimitError {
   success: false;
   error: string;
   timestamp: string;
+  rate_limit?: RateLimitErrorDetails;
 }
 
 export type FetchRateLimitOutcome = FetchRateLimitResult | FetchRateLimitError;
@@ -64,11 +73,16 @@ export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutco
     clearTimeout(timeoutId);
 
     if (!response.ok) {
+      const message = await readErrorMessage(response);
       const statusText = response.statusText || 'Unknown error';
+      const error = message
+        ? `HTTP ${response.status}: ${statusText} - ${message}`
+        : `HTTP ${response.status}: ${statusText}`;
       return {
         success: false,
-        error: `HTTP ${response.status}: ${statusText}`,
+        error,
         timestamp,
+        rate_limit: buildRateLimitErrorDetails(response, message),
       };
     }
 
@@ -113,6 +127,44 @@ export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutco
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
+
+function parseHeaderNumber(headers: Headers, name: string): number | null {
+  const value = headers.get(name);
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function readErrorMessage(response: Response): Promise<string | null> {
+  try {
+    const text = (await response.text()).trim();
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text) as { message?: unknown };
+      if (parsed && typeof parsed.message === 'string') {
+        return parsed.message;
+      }
+    } catch {
+      // Fall back to raw text
+    }
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+function buildRateLimitErrorDetails(
+  response: Response,
+  message: string | null,
+): RateLimitErrorDetails {
+  return {
+    status: response.status,
+    message,
+    rate_limit_remaining: parseHeaderNumber(response.headers, 'x-ratelimit-remaining'),
+    rate_limit_reset: parseHeaderNumber(response.headers, 'x-ratelimit-reset'),
+    retry_after_seconds: parseHeaderNumber(response.headers, 'retry-after'),
+  };
+}
 
 /**
  * Validates that a sample has the expected shape.
