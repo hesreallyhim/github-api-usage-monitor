@@ -15,6 +15,8 @@ export function makeBucket(overrides: Partial<BucketState> = {}): BucketState {
     last_seen_ts: '2025-01-25T12:00:00Z',
     limit: 5000,
     remaining: 5000,
+    first_used: 0,
+    first_remaining: 5000,
     ...overrides,
   };
 }
@@ -28,6 +30,7 @@ export function makeState(buckets: Record<string, BucketState> = {}): ReducerSta
     interval_seconds: POLL_INTERVAL_SECONDS,
     poll_count: 5,
     poll_failures: 0,
+    secondary_rate_limit_hits: 0,
     last_error: null,
   };
 }

@@ -5,7 +5,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
-import { main, createShutdownHandler, isDiagnosticsEnabled, runPollerLoop } from '../../src/poller';
+import {
+  main,
+  createShutdownHandler,
+  isDiagnosticsEnabled,
+  runPollerLoop,
+  createRateLimitControlState,
+} from '../../src/poller';
 import type { LoopDeps } from '../../src/poller';
 import type { ReducerState } from '../../src/types';
 import { MAX_LIFETIME_MS } from '../../src/types';
@@ -184,6 +190,10 @@ describe('runPollerLoop', () => {
     };
   }
 
+  function makePollSuccess(state: ReducerState) {
+    return { success: true as const, state, control_state: createRateLimitControlState() };
+  }
+
   /** Creates deps that exit via MAX_LIFETIME_MS after `exitAfterNowCalls` calls to `deps.now`. */
   function makeTimedDeps(exitAfterNowCalls: number, overrides?: Partial<LoopDeps>): LoopDeps {
     let nowCallCount = 0;
@@ -192,7 +202,7 @@ describe('runPollerLoop', () => {
         nowCallCount++;
         return nowCallCount >= exitAfterNowCalls ? MAX_LIFETIME_MS : 0;
       }),
-      performPoll: vi.fn().mockResolvedValue(makeState()),
+      performPoll: vi.fn().mockResolvedValue(makePollSuccess(makeState())),
       ...overrides,
     });
   }
@@ -248,7 +258,7 @@ describe('runPollerLoop', () => {
     const deps = makeTimedDeps(3, {
       performPoll: vi.fn().mockImplementation(() => {
         pollCallCount++;
-        if (pollCallCount === 1) return Promise.resolve(makeState());
+        if (pollCallCount === 1) return Promise.resolve(makePollSuccess(makeState()));
         return Promise.reject(new Error('network failure'));
       }),
     });
@@ -292,7 +302,7 @@ describe('runPollerLoop', () => {
         if (nowCallCount <= 3) return nowMs;
         return nowMs + MAX_LIFETIME_MS; // triggers lifetime exit
       }),
-      performPoll: vi.fn().mockResolvedValue(burstState),
+      performPoll: vi.fn().mockResolvedValue(makePollSuccess(burstState)),
     });
 
     await runPollerLoop('token', 30, false, deps);

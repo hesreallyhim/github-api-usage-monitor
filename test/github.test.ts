@@ -259,6 +259,10 @@ describe('fetchRateLimit', () => {
       ok: false,
       status: 401,
       statusText: 'Unauthorized',
+      text: vi.fn().mockResolvedValue(''),
+      headers: {
+        get: vi.fn().mockReturnValue(null),
+      },
     };
     const mockFetch = vi.fn().mockResolvedValue(mockResponse);
     vi.stubGlobal('fetch', mockFetch);
@@ -269,6 +273,38 @@ describe('fetchRateLimit', () => {
     if (!result.success) {
       expect(result.error).toContain('HTTP 401');
       expect(result.error).toContain('Unauthorized');
+    }
+  });
+
+  it('captures rate limit headers and message for 429 responses', async () => {
+    const headerMap = new Map([
+      ['x-ratelimit-remaining', '0'],
+      ['x-ratelimit-reset', '1706203600'],
+      ['retry-after', '45'],
+    ]);
+
+    const mockResponse = {
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      text: vi.fn().mockResolvedValue(JSON.stringify({ message: 'Secondary rate limit exceeded' })),
+      headers: {
+        get: (name: string) => headerMap.get(name) ?? null,
+      },
+    };
+    const mockFetch = vi.fn().mockResolvedValue(mockResponse);
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await fetchRateLimit('test-token');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('HTTP 429');
+      expect(result.rate_limit?.status).toBe(429);
+      expect(result.rate_limit?.rate_limit_remaining).toBe(0);
+      expect(result.rate_limit?.rate_limit_reset).toBe(1706203600);
+      expect(result.rate_limit?.retry_after_seconds).toBe(45);
+      expect(result.rate_limit?.message).toContain('Secondary rate limit exceeded');
     }
   });
 

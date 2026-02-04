@@ -56,9 +56,11 @@ function makeState(overrides: Partial<ReducerState> = {}): ReducerState {
     buckets: {},
     started_at_ts: '2026-01-25T12:00:00.000Z',
     stopped_at_ts: null,
+    poller_started_at_ts: null,
     interval_seconds: 30,
     poll_count: 0,
     poll_failures: 0,
+    secondary_rate_limit_hits: 0,
     last_error: null,
     ...overrides,
   };
@@ -379,12 +381,13 @@ describe('reduce', () => {
 
 describe('recordFailure', () => {
   it('increments poll_failures and sets last_error', () => {
-    const state = makeState({ poll_failures: 2 });
+    const state = makeState({ poll_failures: 2, secondary_rate_limit_hits: 0 });
 
     const newState = recordFailure(state, 'Network error');
 
     expect(newState.poll_failures).toBe(3);
     expect(newState.last_error).toBe('Network error');
+    expect(newState.secondary_rate_limit_hits).toBe(0);
   });
 
   it('preserves existing bucket state', () => {
@@ -395,6 +398,15 @@ describe('recordFailure', () => {
     const newState = recordFailure(state, 'Error');
 
     expect(newState.buckets['core']?.total_used).toBe(100);
+  });
+
+  it('increments secondary_rate_limit_hits for secondary rate-limit failures', () => {
+    const state = makeState({ secondary_rate_limit_hits: 1 });
+
+    const newState = recordFailure(state, 'HTTP 429', { rate_limit_kind: 'secondary' });
+
+    expect(newState.secondary_rate_limit_hits).toBe(2);
+    expect(newState.poll_failures).toBe(1);
   });
 });
 
