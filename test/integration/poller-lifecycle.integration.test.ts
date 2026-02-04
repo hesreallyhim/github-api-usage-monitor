@@ -216,6 +216,7 @@ describe('verifyPollerStartup timeout', () => {
       interval_seconds: 30,
       poll_count: 0,
       poll_failures: 0,
+      secondary_rate_limit_hits: 0,
       last_error: null,
     };
     fs.writeFileSync(getStatePath(), JSON.stringify(stateWithoutStartup), 'utf-8');
@@ -246,6 +247,7 @@ describe('verifyPollerStartup timeout', () => {
       interval_seconds: 30,
       poll_count: 0,
       poll_failures: 0,
+      secondary_rate_limit_hits: 0,
       last_error: null,
     };
     fs.writeFileSync(getStatePath(), JSON.stringify(stateWithStartup), 'utf-8');
