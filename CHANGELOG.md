@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v1.0.0...v1.1.0) (2026-02-04)
+
+
+### Features
+
+* **poller:** add enhanced rate-limit protection ([7889252](https://github.com/hesreallyhim/github-api-usage-monitor/commit/7889252b28a1c701a6fd1d947a9864b268a37d86))
+
 ## [1.0.0](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v0.1.2...v1.0.0) (2026-02-04)
 
 
