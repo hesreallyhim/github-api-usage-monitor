@@ -42,6 +42,7 @@ function makeInitialState(): ReducerState {
     interval_seconds: 30,
     poll_count: 0,
     poll_failures: 0,
+    secondary_rate_limit_hits: 0,
     last_error: null,
   };
 }
@@ -68,6 +69,7 @@ function makeStateWithBucket(): ReducerState {
     interval_seconds: 30,
     poll_count: 1,
     poll_failures: 0,
+    secondary_rate_limit_hits: 0,
     last_error: null,
   };
 }

@@ -30,6 +30,7 @@ function makeState(overrides: Partial<ReducerState> = {}): ReducerState {
     interval_seconds: 30,
     poll_count: 0,
     poll_failures: 0,
+    secondary_rate_limit_hits: 0,
     last_error: null,
     ...overrides,
   };
@@ -228,6 +229,14 @@ describe('isValidState', () => {
       isValidState({
         ...makeState(),
         last_error: ['array', 'not', 'allowed'],
+      }),
+    ).toBe(false);
+
+    // secondary_rate_limit_hits must be number when provided
+    expect(
+      isValidState({
+        ...makeState(),
+        secondary_rate_limit_hits: 'nope',
       }),
     ).toBe(false);
   });

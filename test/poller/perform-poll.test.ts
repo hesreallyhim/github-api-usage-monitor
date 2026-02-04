@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { performPoll, buildDiagnosticsEntry } from '../../src/poller';
+import { performPoll, buildDiagnosticsEntry, createRateLimitControlState } from '../../src/poller';
 import type { RateLimitResponse } from '../../src/types';
 import type { ReduceResult, UpdateResult } from '../../src/reducer';
 import { makeBucket, makeState } from './helpers';
@@ -218,7 +218,7 @@ describe('performPoll', () => {
     fetchRateLimit.mockResolvedValue({ success: true, data: rateLimitData });
     reduce.mockReturnValue({ state: newState, updates: {} } satisfies ReduceResult);
 
-    const result = await performPoll(oldState, 'test-token', false);
+    const result = await performPoll(oldState, 'test-token', false, createRateLimitControlState());
 
     expect(fetchRateLimit).toHaveBeenCalledWith('test-token');
     expect(reduce).toHaveBeenCalledWith(
@@ -227,7 +227,10 @@ describe('performPoll', () => {
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
     );
     expect(writeState).toHaveBeenCalledWith(newState);
-    expect(result).toBe(newState);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.state).toBe(newState);
+    }
   });
 
   it('failure path: calls recordFailure, writeState; returns failure state', async (): Promise<void> => {
@@ -237,11 +240,17 @@ describe('performPoll', () => {
     fetchRateLimit.mockResolvedValue({ success: false, error: 'API error' });
     recordFailure.mockReturnValue(failState);
 
-    const result = await performPoll(oldState, 'test-token', false);
+    const result = await performPoll(oldState, 'test-token', false, createRateLimitControlState());
 
-    expect(recordFailure).toHaveBeenCalledWith(oldState, 'API error');
+    expect(recordFailure).toHaveBeenCalledWith(oldState, 'API error', {
+      rate_limit_kind: undefined,
+    });
     expect(writeState).toHaveBeenCalledWith(failState);
-    expect(result).toBe(failState);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.state).toBe(failState);
+      expect(result.error).toBe('API error');
+    }
     expect(reduce).not.toHaveBeenCalled();
   });
 
@@ -261,7 +270,7 @@ describe('performPoll', () => {
       },
     } satisfies ReduceResult);
 
-    await performPoll(oldState, 'test-token', true);
+    await performPoll(oldState, 'test-token', true, createRateLimitControlState());
 
     expect(appendPollLogEntry).toHaveBeenCalledTimes(1);
     const logEntry = appendPollLogEntry.mock.calls[0][0] as {
@@ -270,6 +279,39 @@ describe('performPoll', () => {
     };
     expect(logEntry.poll_number).toBe(8);
     expect(logEntry.buckets).toHaveProperty('core');
+  });
+
+  it('rate-limit failure: logs error entry when diagnostics enabled', async (): Promise<void> => {
+    const oldState = makeState();
+    const failState = { ...oldState, poll_failures: 1, last_error: 'HTTP 429' };
+
+    fetchRateLimit.mockResolvedValue({
+      success: false,
+      error: 'HTTP 429: Too Many Requests - secondary',
+      rate_limit: {
+        status: 429,
+        message: 'Secondary rate limit exceeded',
+        rate_limit_remaining: 1,
+        rate_limit_reset: 1706203600,
+        retry_after_seconds: 30,
+      },
+    });
+    recordFailure.mockReturnValue(failState);
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1706200000 * 1000);
+
+    await performPoll(oldState, 'test-token', true, createRateLimitControlState());
+
+    expect(appendPollLogEntry).toHaveBeenCalledTimes(1);
+    const logEntry = appendPollLogEntry.mock.calls[0][0] as {
+      poll_number: number;
+      error?: { kind?: string; status?: number };
+    };
+    expect(logEntry.poll_number).toBe(6);
+    expect(logEntry.error?.kind).toBe('secondary');
+    expect(logEntry.error?.status).toBe(429);
+
+    nowSpy.mockRestore();
   });
 
   it('diagnostics disabled: does NOT call appendPollLogEntry', async (): Promise<void> => {
@@ -283,7 +325,7 @@ describe('performPoll', () => {
     fetchRateLimit.mockResolvedValue({ success: true, data: rateLimitData });
     reduce.mockReturnValue({ state: newState, updates: {} } satisfies ReduceResult);
 
-    await performPoll(oldState, 'test-token', false);
+    await performPoll(oldState, 'test-token', false, createRateLimitControlState());
 
     expect(appendPollLogEntry).not.toHaveBeenCalled();
   });

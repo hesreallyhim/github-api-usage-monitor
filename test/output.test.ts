@@ -26,9 +26,11 @@ function makeState(overrides: Partial<ReducerState> = {}): ReducerState {
     buckets: {},
     started_at_ts: '2026-01-25T12:00:00.000Z',
     stopped_at_ts: '2026-01-25T12:10:00.000Z',
+    poller_started_at_ts: null,
     interval_seconds: 30,
     poll_count: 20,
     poll_failures: 0,
+    secondary_rate_limit_hits: 0,
     last_error: null,
     ...overrides,
   };
@@ -344,6 +346,15 @@ describe('generateWarnings', () => {
     const warnings = generateWarnings(state);
 
     expect(warnings).toContainEqual(expect.stringContaining('3 anomaly'));
+  });
+
+  it('warns on secondary rate limit hits', () => {
+    const state = makeState({ secondary_rate_limit_hits: 2 });
+    const warnings = generateWarnings(state);
+
+    expect(warnings).toContainEqual(
+      expect.stringContaining('Secondary rate limit warning response was received (2 times)'),
+    );
   });
 
   it('warns on multiple window crosses for active buckets', () => {
