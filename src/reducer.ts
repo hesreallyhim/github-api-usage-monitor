@@ -27,7 +27,13 @@
  *   last_used = used
  */
 
-import type { ReducerState, BucketState, RateLimitSample, RateLimitResponse } from './types';
+import type {
+  ReducerState,
+  BucketState,
+  RateLimitSample,
+  RateLimitResponse,
+  RateLimitErrorKind,
+} from './types';
 import { POLL_INTERVAL_SECONDS } from './types';
 
 // -----------------------------------------------------------------------------
@@ -189,6 +195,7 @@ export function createInitialState(): ReducerState {
     interval_seconds: POLL_INTERVAL_SECONDS,
     poll_count: 0,
     poll_failures: 0,
+    secondary_rate_limit_hits: 0,
     last_error: null,
   };
 }
@@ -256,10 +263,22 @@ export function reduce(
  * Records a poll failure in state.
  * Pure function - returns new state.
  */
-export function recordFailure(state: ReducerState, error: string): ReducerState {
+export interface FailureMeta {
+  /** Optional rate-limit classification for this failure */
+  rate_limit_kind?: RateLimitErrorKind;
+}
+
+export function recordFailure(
+  state: ReducerState,
+  error: string,
+  meta: FailureMeta = {},
+): ReducerState {
+  const secondaryHits = state.secondary_rate_limit_hits ?? 0;
+  const sawSecondary = meta.rate_limit_kind === 'secondary';
   return {
     ...state,
     poll_failures: state.poll_failures + 1,
+    secondary_rate_limit_hits: secondaryHits + (sawSecondary ? 1 : 0),
     last_error: error,
   };
 }

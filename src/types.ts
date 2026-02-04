@@ -82,6 +82,8 @@ export interface ReducerState {
   poll_count: number;
   /** Total number of failed poll attempts */
   poll_failures: number;
+  /** Total number of secondary rate-limit responses observed */
+  secondary_rate_limit_hits: number;
   /** Last error message (null if no errors) */
   last_error: string | null;
 }
@@ -163,6 +165,8 @@ export interface PollLogEntry {
   poll_number: number;
   /** Per-bucket snapshot */
   buckets: Record<string, PollLogBucketSnapshot>;
+  /** Optional error context for rate-limit responses */
+  error?: PollLogError;
 }
 
 /** Timeout for fetch requests to GitHub API (milliseconds) */
@@ -170,3 +174,28 @@ export const FETCH_TIMEOUT_MS = 10000;
 
 /** Maximum poller lifetime as defense-in-depth (6 hours in milliseconds) */
 export const MAX_LIFETIME_MS = 6 * 60 * 60 * 1000;
+
+// -----------------------------------------------------------------------------
+// Rate limit error diagnostics (poll log + warnings)
+// -----------------------------------------------------------------------------
+
+export type RateLimitErrorKind = 'primary' | 'secondary' | 'unknown';
+
+export interface PollLogError {
+  /** Rate limit classification */
+  kind: RateLimitErrorKind;
+  /** HTTP status code */
+  status: number;
+  /** Error message from API response (if available) */
+  message: string | null;
+  /** Retry-After header value (seconds) */
+  retry_after_seconds: number | null;
+  /** X-RateLimit-Remaining header value */
+  rate_limit_remaining: number | null;
+  /** X-RateLimit-Reset header value (epoch seconds) */
+  rate_limit_reset: number | null;
+  /** Next allowed request time (epoch seconds) */
+  next_allowed_at: number | null;
+  /** Consecutive secondary-limit retries (0 for non-secondary) */
+  secondary_retry_count: number;
+}

@@ -193,6 +193,13 @@ export function generateWarnings(state: ReducerState): string[] {
     warnings.push(`${state.poll_failures} poll(s) failed during monitoring`);
   }
 
+  // Secondary rate limit warnings
+  const secondaryHits = state.secondary_rate_limit_hits ?? 0;
+  if (secondaryHits > 0) {
+    const suffix = secondaryHits > 1 ? ` (${secondaryHits} times)` : '';
+    warnings.push(`Secondary rate limit warning response was received${suffix}`);
+  }
+
   // Anomalies
   const totalAnomalies = Object.values(state.buckets).reduce((sum, b) => sum + b.anomalies, 0);
   if (totalAnomalies > 0) {

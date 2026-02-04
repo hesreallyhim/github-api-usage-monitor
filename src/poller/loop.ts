@@ -12,6 +12,11 @@ import { readState, writeState } from '../state';
 import { parseBooleanFlag, sleep } from '../utils';
 import { computeSleepPlan, applyDebounce, POLL_DEBOUNCE_MS } from './sleep-plan';
 import { performPoll as performPollImpl } from './perform-poll';
+import {
+  applyRateLimitGate,
+  createRateLimitControlState,
+  MAX_SECONDARY_RETRIES,
+} from './rate-limit-control';
 
 /**
  * Returns true if the GITHUB_API_MONITOR_DIAGNOSTICS env var is truthy.
@@ -91,6 +96,7 @@ export async function runPollerLoop(
   deps: LoopDeps = defaultDeps,
 ): Promise<void> {
   let state: ReducerState | undefined;
+  let controlState = createRateLimitControlState();
   const startTimeMs = deps.now();
 
   // Handle graceful shutdown - write state immediately before exiting
@@ -111,7 +117,18 @@ export async function runPollerLoop(
   writeState(state);
 
   // Initial poll immediately
-  state = await deps.performPoll(state, token, diagnosticsEnabled);
+  const initialResult = await deps.performPoll(state, token, diagnosticsEnabled, controlState);
+  state = initialResult.state;
+  controlState = initialResult.control_state;
+  if (!initialResult.success && initialResult.fatal) {
+    console.error(
+      `Secondary rate limit retry limit exceeded (${MAX_SECONDARY_RETRIES}). Stopping poller.`,
+    );
+    state = markStopped(state);
+    writeState(state);
+    deps.exit(1);
+    return;
+  }
 
   // Polling loop (runs until SIGTERM or max lifetime exceeded)
   while (true) {
@@ -134,12 +151,48 @@ export async function runPollerLoop(
         Math.floor(deps.now() / 1000),
       );
       const plan = applyDebounce(rawPlan, POLL_DEBOUNCE_MS);
-      await sleep(plan.sleepMs);
-      state = await deps.performPoll(state, token, diagnosticsEnabled);
+      const gatedPlan = applyRateLimitGate(plan, controlState, deps.now());
+      await sleep(gatedPlan.sleepMs);
+      const pollResult = await deps.performPoll(state, token, diagnosticsEnabled, controlState);
+      state = pollResult.state;
+      controlState = pollResult.control_state;
 
-      if (plan.burst) {
-        await sleep(plan.burstGapMs);
-        state = await deps.performPoll(state, token, diagnosticsEnabled);
+      if (!pollResult.success && pollResult.fatal) {
+        console.error(
+          `Secondary rate limit retry limit exceeded (${MAX_SECONDARY_RETRIES}). Stopping poller.`,
+        );
+        state = markStopped(state);
+        writeState(state);
+        deps.exit(1);
+        return;
+      }
+
+      if (gatedPlan.burst) {
+        const nowMs = deps.now();
+        const blocked =
+          controlState.blocked_until_ms !== null && controlState.blocked_until_ms > nowMs;
+
+        if (!blocked) {
+          await sleep(gatedPlan.burstGapMs);
+          const burstResult = await deps.performPoll(
+            state,
+            token,
+            diagnosticsEnabled,
+            controlState,
+          );
+          state = burstResult.state;
+          controlState = burstResult.control_state;
+
+          if (!burstResult.success && burstResult.fatal) {
+            console.error(
+              `Secondary rate limit retry limit exceeded (${MAX_SECONDARY_RETRIES}). Stopping poller.`,
+            );
+            state = markStopped(state);
+            writeState(state);
+            deps.exit(1);
+            return;
+          }
+        }
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

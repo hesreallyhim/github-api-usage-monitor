@@ -153,6 +153,9 @@ export function isValidState(obj: unknown): obj is ReducerState {
   if (typeof obj['poll_failures'] !== 'number') {
     return false;
   }
+  if (typeof obj['secondary_rate_limit_hits'] !== 'number') {
+    return false;
+  }
 
   // Validate each bucket entry
   for (const value of Object.values(obj['buckets'])) {

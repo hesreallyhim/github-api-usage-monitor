@@ -26,7 +26,7 @@
  *     else: total_used += delta
  *   last_used = used
  */
-import type { ReducerState, BucketState, RateLimitSample, RateLimitResponse } from './types';
+import type { ReducerState, BucketState, RateLimitSample, RateLimitResponse, RateLimitErrorKind } from './types';
 /**
  * Initializes a new bucket state from the first sample.
  */
@@ -73,7 +73,11 @@ export declare function reduce(state: ReducerState, response: RateLimitResponse,
  * Records a poll failure in state.
  * Pure function - returns new state.
  */
-export declare function recordFailure(state: ReducerState, error: string): ReducerState;
+export interface FailureMeta {
+    /** Optional rate-limit classification for this failure */
+    rate_limit_kind?: RateLimitErrorKind;
+}
+export declare function recordFailure(state: ReducerState, error: string, meta?: FailureMeta): ReducerState;
 /**
  * Marks state as stopped.
  */

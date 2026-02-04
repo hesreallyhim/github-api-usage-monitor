@@ -152,11 +152,16 @@ async function fetchRateLimit(token) {
         });
         clearTimeout(timeoutId);
         if (!response.ok) {
+            const message = await readErrorMessage(response);
             const statusText = response.statusText || 'Unknown error';
+            const error = message
+                ? `HTTP ${response.status}: ${statusText} - ${message}`
+                : `HTTP ${response.status}: ${statusText}`;
             return {
                 success: false,
-                error: `HTTP ${response.status}: ${statusText}`,
+                error,
                 timestamp,
+                rate_limit: buildRateLimitErrorDetails(response, message),
             };
         }
         const raw = await response.json();
@@ -195,6 +200,42 @@ async function fetchRateLimit(token) {
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
+function parseHeaderNumber(headers, name) {
+    const value = headers.get(name);
+    if (!value)
+        return null;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+async function readErrorMessage(response) {
+    try {
+        const text = (await response.text()).trim();
+        if (!text)
+            return null;
+        try {
+            const parsed = JSON.parse(text);
+            if (parsed && typeof parsed.message === 'string') {
+                return parsed.message;
+            }
+        }
+        catch {
+            // Fall back to raw text
+        }
+        return text;
+    }
+    catch {
+        return null;
+    }
+}
+function buildRateLimitErrorDetails(response, message) {
+    return {
+        status: response.status,
+        message,
+        rate_limit_remaining: parseHeaderNumber(response.headers, 'x-ratelimit-remaining'),
+        rate_limit_reset: parseHeaderNumber(response.headers, 'x-ratelimit-reset'),
+        retry_after_seconds: parseHeaderNumber(response.headers, 'retry-after'),
+    };
+}
 /**
  * Validates that a sample has the expected shape.
  * Used for defensive parsing.
@@ -394,6 +435,7 @@ function createInitialState() {
         interval_seconds: types_POLL_INTERVAL_SECONDS,
         poll_count: 0,
         poll_failures: 0,
+        secondary_rate_limit_hits: 0,
         last_error: null,
     };
 }
@@ -438,14 +480,13 @@ function reduce(state, response, timestamp) {
         updates,
     };
 }
-/**
- * Records a poll failure in state.
- * Pure function - returns new state.
- */
-function recordFailure(state, error) {
+function recordFailure(state, error, meta = {}) {
+    const secondaryHits = state.secondary_rate_limit_hits ?? 0;
+    const sawSecondary = meta.rate_limit_kind === 'secondary';
     return {
         ...state,
         poll_failures: state.poll_failures + 1,
+        secondary_rate_limit_hits: secondaryHits + (sawSecondary ? 1 : 0),
         last_error: error,
     };
 }
@@ -636,6 +677,9 @@ function isValidState(obj) {
     if (typeof obj['poll_failures'] !== 'number') {
         return false;
     }
+    if (typeof obj['secondary_rate_limit_hits'] !== 'number') {
+        return false;
+    }
     // Validate each bucket entry
     for (const value of Object.values(obj['buckets'])) {
         if (!isValidBucketState(value)) {
@@ -821,6 +865,126 @@ function readPollLog() {
     }
 }
 
+;// CONCATENATED MODULE: ./src/poller/rate-limit-control.ts
+/**
+ * Rate Limit Control
+ * Layer: poller
+ *
+ * Pure logic for handling 403/429 responses and gating poll cadence.
+ *
+ * Based on guidance in current docs at time of writing:
+ * https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#exceeding-the-rate-limit
+ */
+const MAX_SECONDARY_RETRIES = 5;
+const SECONDARY_DEFAULT_WAIT_MS = 60_000;
+function createRateLimitControlState() {
+    return { blocked_until_ms: null, secondary_consecutive: 0 };
+}
+function resetRateLimitControl(state) {
+    return { ...state, blocked_until_ms: null, secondary_consecutive: 0 };
+}
+function classifyRateLimitError(details) {
+    if (details.status !== 403 && details.status !== 429) {
+        return null;
+    }
+    const message = (details.message ?? '').toLowerCase();
+    if (message.includes('secondary') || message.includes('abuse')) {
+        return 'secondary';
+    }
+    // "If you exceed your primary rate limit, you will receive a 403 or 429 response, and the x-ratelimit-remaining header will be 0."
+    if (details.rate_limit_remaining === 0) {
+        return 'primary';
+    }
+    return 'unknown';
+}
+function handleRateLimitError(state, event, nowMs) {
+    const { details, kind } = event;
+    const candidates = [nowMs + SECONDARY_DEFAULT_WAIT_MS];
+    // Independent checks (no else-if) so we can honor multiple constraints together.
+    // "If the retry-after response header is present, you should not retry your request until after that many seconds has elapsed."
+    if (details.retry_after_seconds !== null) {
+        candidates.push(nowMs + details.retry_after_seconds * 1000);
+    }
+    // "If the x-ratelimit-remaining header is 0"
+    if (details.rate_limit_remaining === 0 && details.rate_limit_reset !== null) {
+        // "You should not retry your request until after the time specified by the x-ratelimit-reset header."
+        candidates.push(details.rate_limit_reset * 1000);
+    }
+    const baseAllowedAt = Math.max(...candidates);
+    if (kind === 'secondary') {
+        const secondaryRetryCount = state.secondary_consecutive + 1;
+        const baseDelayMs = Math.max(0, baseAllowedAt - nowMs);
+        // "If your request continues to fail due to a secondary rate limit, wait for an exponentially increasing amount of time between retries."
+        const multiplier = Math.pow(2, secondaryRetryCount - 1);
+        const waitMs = baseDelayMs * multiplier;
+        const nextAllowedAtMs = nowMs + waitMs;
+        // "throw an error after a specific number of retries."
+        const fatal = secondaryRetryCount >= MAX_SECONDARY_RETRIES;
+        return {
+            state: { blocked_until_ms: nextAllowedAtMs, secondary_consecutive: secondaryRetryCount },
+            kind,
+            next_allowed_at_ms: nextAllowedAtMs,
+            wait_ms: waitMs,
+            secondary_retry_count: secondaryRetryCount,
+            fatal,
+        };
+    }
+    if (kind === 'primary') {
+        const nextAllowedAtMs = details.rate_limit_reset !== null ? details.rate_limit_reset * 1000 : baseAllowedAt;
+        const waitMs = Math.max(0, nextAllowedAtMs - nowMs);
+        return {
+            state: { blocked_until_ms: nextAllowedAtMs, secondary_consecutive: 0 },
+            kind,
+            next_allowed_at_ms: nextAllowedAtMs,
+            wait_ms: waitMs,
+            secondary_retry_count: 0,
+            fatal: false,
+        };
+    }
+    // "Otherwise, wait for at least one minute before retrying."
+    const nextAllowedAtMs = baseAllowedAt;
+    const waitMs = Math.max(0, nextAllowedAtMs - nowMs);
+    return {
+        state: { blocked_until_ms: nextAllowedAtMs, secondary_consecutive: 0 },
+        kind,
+        next_allowed_at_ms: nextAllowedAtMs,
+        wait_ms: waitMs,
+        secondary_retry_count: 0,
+        fatal: false,
+    };
+}
+function applyRateLimitGate(plan, controlState, nowMs) {
+    const blockedUntil = controlState.blocked_until_ms;
+    if (!blockedUntil || blockedUntil <= nowMs) {
+        return { ...plan, blocked: false };
+    }
+    const waitMs = Math.max(plan.sleepMs, blockedUntil - nowMs);
+    return {
+        sleepMs: waitMs,
+        burst: false,
+        burstGapMs: plan.burstGapMs,
+        blocked: true,
+    };
+}
+function buildRateLimitErrorEntry(event, pollNumber, timestamp, decision) {
+    const error = {
+        kind: event.kind,
+        status: event.details.status,
+        message: event.details.message ?? null,
+        retry_after_seconds: event.details.retry_after_seconds,
+        rate_limit_remaining: event.details.rate_limit_remaining,
+        rate_limit_reset: event.details.rate_limit_reset,
+        next_allowed_at: decision.next_allowed_at_ms !== null ? Math.ceil(decision.next_allowed_at_ms / 1000) : null,
+        secondary_retry_count: decision.secondary_retry_count,
+    };
+    return {
+        timestamp,
+        poll_number: pollNumber,
+        buckets: {},
+        error,
+    };
+}
+
 ;// CONCATENATED MODULE: ./src/poller/perform-poll.ts
 /**
  * Single Poll Orchestration
@@ -833,11 +997,12 @@ function readPollLog() {
 
 
 
+
 /**
  * Builds a diagnostics poll log entry from reduce results and raw API data.
  * Pure function — testable with zero mocks.
  */
-function buildDiagnosticsEntry(reduceResult, rateLimitData, pollCount, timestamp) {
+function buildDiagnosticsEntry(reduceResult, rateLimitData, pollNumber, timestamp) {
     const bucketSnapshots = {};
     for (const [name, update] of Object.entries(reduceResult.updates)) {
         const sample = rateLimitData.resources[name];
@@ -855,29 +1020,57 @@ function buildDiagnosticsEntry(reduceResult, rateLimitData, pollCount, timestamp
     }
     return {
         timestamp,
-        poll_number: pollCount,
+        poll_number: pollNumber,
         buckets: bucketSnapshots,
     };
 }
 /**
  * Performs a single poll and updates state.
  */
-async function performPoll(state, token, diagnosticsEnabled) {
+async function performPoll(state, token, diagnosticsEnabled, controlState) {
     const timestamp = new Date().toISOString();
+    let nextControlState = controlState;
     const result = await fetchRateLimit(token);
     if (!result.success) {
-        const newState = recordFailure(state, result.error);
+        const rateLimitDetails = result.rate_limit;
+        const rateLimitKind = rateLimitDetails ? classifyRateLimitError(rateLimitDetails) : null;
+        const rateLimitEvent = rateLimitKind && rateLimitDetails ? { kind: rateLimitKind, details: rateLimitDetails } : null;
+        let rateLimitDecision = null;
+        if (rateLimitEvent) {
+            rateLimitDecision = handleRateLimitError(controlState, rateLimitEvent, Date.now());
+            nextControlState = rateLimitDecision.state;
+        }
+        const newState = recordFailure(state, result.error, {
+            rate_limit_kind: rateLimitEvent?.kind,
+        });
         writeState(newState);
-        return newState;
+        if (diagnosticsEnabled && rateLimitEvent && rateLimitDecision) {
+            const pollNumber = newState.poll_count + newState.poll_failures;
+            const logEntry = buildRateLimitErrorEntry(rateLimitEvent, pollNumber, timestamp, rateLimitDecision);
+            appendPollLogEntry(logEntry);
+        }
+        return {
+            success: false,
+            state: newState,
+            control_state: nextControlState,
+            error: result.error,
+            fatal: rateLimitDecision?.fatal ?? false,
+        };
     }
     const reduceResult = reduce(state, result.data, timestamp);
     const newState = reduceResult.state;
     writeState(newState);
+    nextControlState = resetRateLimitControl(controlState);
     if (diagnosticsEnabled) {
-        const logEntry = buildDiagnosticsEntry(reduceResult, result.data, newState.poll_count, timestamp);
+        const pollNumber = newState.poll_count + newState.poll_failures;
+        const logEntry = buildDiagnosticsEntry(reduceResult, result.data, pollNumber, timestamp);
         appendPollLogEntry(logEntry);
     }
-    return newState;
+    return {
+        success: true,
+        state: newState,
+        control_state: nextControlState,
+    };
 }
 
 ;// CONCATENATED MODULE: ./src/poller/sleep-plan.ts
@@ -968,6 +1161,7 @@ function applyDebounce(plan, debounceMs) {
 
 
 
+
 /**
  * Returns true if the GITHUB_API_MONITOR_DIAGNOSTICS env var is truthy.
  */
@@ -1022,6 +1216,7 @@ const defaultDeps = {
  */
 async function runPollerLoop(token, intervalSeconds, diagnosticsEnabled, deps = defaultDeps) {
     let state;
+    let controlState = createRateLimitControlState();
     const startTimeMs = deps.now();
     // Handle graceful shutdown - write state immediately before exiting
     const shutdownHandler = createShutdownHandler(() => state, writeState, deps.exit);
@@ -1038,7 +1233,16 @@ async function runPollerLoop(token, intervalSeconds, diagnosticsEnabled, deps = 
     state = { ...state, poller_started_at_ts: new Date().toISOString() };
     writeState(state);
     // Initial poll immediately
-    state = await deps.performPoll(state, token, diagnosticsEnabled);
+    const initialResult = await deps.performPoll(state, token, diagnosticsEnabled, controlState);
+    state = initialResult.state;
+    controlState = initialResult.control_state;
+    if (!initialResult.success && initialResult.fatal) {
+        console.error(`Secondary rate limit retry limit exceeded (${MAX_SECONDARY_RETRIES}). Stopping poller.`);
+        state = markStopped(state);
+        writeState(state);
+        deps.exit(1);
+        return;
+    }
     // Polling loop (runs until SIGTERM or max lifetime exceeded)
     while (true) {
         try {
@@ -1053,11 +1257,34 @@ async function runPollerLoop(token, intervalSeconds, diagnosticsEnabled, deps = 
             }
             const rawPlan = computeSleepPlan(state, intervalSeconds * 1000, Math.floor(deps.now() / 1000));
             const plan = applyDebounce(rawPlan, POLL_DEBOUNCE_MS);
-            await utils_sleep(plan.sleepMs);
-            state = await deps.performPoll(state, token, diagnosticsEnabled);
-            if (plan.burst) {
-                await utils_sleep(plan.burstGapMs);
-                state = await deps.performPoll(state, token, diagnosticsEnabled);
+            const gatedPlan = applyRateLimitGate(plan, controlState, deps.now());
+            await utils_sleep(gatedPlan.sleepMs);
+            const pollResult = await deps.performPoll(state, token, diagnosticsEnabled, controlState);
+            state = pollResult.state;
+            controlState = pollResult.control_state;
+            if (!pollResult.success && pollResult.fatal) {
+                console.error(`Secondary rate limit retry limit exceeded (${MAX_SECONDARY_RETRIES}). Stopping poller.`);
+                state = markStopped(state);
+                writeState(state);
+                deps.exit(1);
+                return;
+            }
+            if (gatedPlan.burst) {
+                const nowMs = deps.now();
+                const blocked = controlState.blocked_until_ms !== null && controlState.blocked_until_ms > nowMs;
+                if (!blocked) {
+                    await utils_sleep(gatedPlan.burstGapMs);
+                    const burstResult = await deps.performPoll(state, token, diagnosticsEnabled, controlState);
+                    state = burstResult.state;
+                    controlState = burstResult.control_state;
+                    if (!burstResult.success && burstResult.fatal) {
+                        console.error(`Secondary rate limit retry limit exceeded (${MAX_SECONDARY_RETRIES}). Stopping poller.`);
+                        state = markStopped(state);
+                        writeState(state);
+                        deps.exit(1);
+                        return;
+                    }
+                }
             }
         }
         catch (error) {
@@ -1088,6 +1315,7 @@ async function main() {
 }
 
 ;// CONCATENATED MODULE: ./src/poller/index.ts
+
 
 
 
