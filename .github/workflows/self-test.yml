@@ -63,10 +63,16 @@ concurrency:
   group: self-test
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   scenario:
     name: Scenario — ${{ matrix.name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     strategy:
       max-parallel: 1
       fail-fast: false
@@ -137,6 +143,9 @@ jobs:
   scenario-diag:
     name: Diagnostics — ${{ matrix.name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     needs: [scenario]
     strategy:
       max-parallel: 1
