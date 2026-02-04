@@ -135,11 +135,24 @@ engine-strict=true
 - Release Please runs on `push` to `main` (and manual dispatch).
 - Version tags:
   - `vX.Y.Z` (annotated release tag)
-  - `vX` (and optionally `vX.Y`) advanced on release
+  - `vX` and `vX.Y` moving tags, force-updated on each release
 
 **Rationale**
 - GitHub Action consumers should be able to pin to a major (`@v1`) while receiving compatible updates.
 - Release Please is the single source of truth for versions and changelogs.
+- Moving tags are managed by the release workflow via `git tag -f` + `git push -f` when a release is actually created.
+
+**Protocol**
+- Only the Release Please workflow updates `vX` and `vX.Y`.
+- Moving tags are updated only on release creation (not on release PR creation).
+- Do not create or move `vX`/`vX.Y` manually; if a manual release is needed, use a `Release-As: X.Y.Z` commit to drive Release Please.
+
+**Example (Release-As footer)**
+```
+chore: add social preview images
+
+Release-As: 1.1.1
+```
 
 ---
 
