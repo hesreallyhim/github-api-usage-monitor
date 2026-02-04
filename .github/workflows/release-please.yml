@@ -27,8 +27,11 @@ jobs:
         if: ${{ steps.release.outputs.release_created }}
         run: |
           major="${{ steps.release.outputs.major }}"
-          tag="v${major}"
+          minor="${{ steps.release.outputs.minor }}"
+          tag_major="v${major}"
+          tag_minor="v${major}.${minor}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f "$tag"
-          git push -f origin "$tag"
+          git tag -f "$tag_major"
+          git tag -f "$tag_minor"
+          git push -f origin "$tag_major" "$tag_minor"

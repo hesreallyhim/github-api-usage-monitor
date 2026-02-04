@@ -1,7 +1,7 @@
 {
   "packages": {
     ".": {
-      "release-type": "simple",
+      "release-type": "node",
       "package-name": "github-api-usage-monitor",
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false,
