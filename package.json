@@ -23,6 +23,7 @@
     "lint:fix": "eslint src test --fix",
     "typecheck": "tsc --noEmit",
     "generate:self-test": "tsx scripts/generate-self-test.ts",
+    "check:github-docs": "node scripts/check-github-docs.mjs --output docs/github-documentation/docs-check.json --write-summary",
     "clean": "rm -rf dist",
     "prepare": "husky",
     "prepublishOnly": "npm run build:all"

@@ -1,0 +1,81 @@
+# Description
+# Checks designated GitHub documentation pages for content changes and files an issue when detected.
+
+name: GitHub Docs Watch
+
+on:
+  # Run every 14 days at 09:00 UTC and allow manual runs for verification.
+  schedule:
+    - cron: '0 9 */14 * *'
+  workflow_dispatch:
+
+permissions:
+  # Read repo contents and open issues on detected changes.
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository contents for local hashes and metadata.
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Check documentation hashes
+        id: check
+        run: node scripts/check-github-docs.mjs --output docs/github-documentation/docs-check.json --write-summary
+
+      - name: Create issue if docs changed
+        # Avoid opening duplicate issues by title when changes are detected.
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('docs/github-documentation/docs-check.json', 'utf8'));
+            const changed = data.results.filter((item) => item.changed);
+
+            const title = 'GitHub documentation change detected';
+            const { owner, repo } = context.repo;
+
+            const existing = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            if (existing.data.some((issue) => issue.title === title)) {
+              console.log('Existing issue found; skipping creation.');
+              return;
+            }
+
+            const lines = [
+              'The scheduled documentation check detected changes in these files:',
+              '',
+            ];
+
+            for (const item of changed) {
+              lines.push(`- ${item.file}`);
+              lines.push(`  - redirect: ${item.redirect_link}`);
+              lines.push(`  - expected: ${item.expected_hash ?? 'missing'}`);
+              lines.push(`  - actual: ${item.actual_hash}`);
+              lines.push('');
+            }
+
+            lines.push(
+              `Run: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            );
+
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body: lines.join('\n'),
+            });

@@ -1,0 +1,22 @@
+{
+  "changed": false,
+  "changed_count": 0,
+  "results": [
+    {
+      "file": "docs/github-documentation/rate-limit.md",
+      "redirect_link": "https://docs.github.com/api/article/body?pathname=/en/rest/rate-limit/rate-limit",
+      "expected_hash": "eab796b16a014b82e54bd3bc27e37f3b0ea8fee2ff127c5c3930d0576f7d44d1",
+      "actual_hash": "eab796b16a014b82e54bd3bc27e37f3b0ea8fee2ff127c5c3930d0576f7d44d1",
+      "changed": false,
+      "diff": null
+    },
+    {
+      "file": "docs/github-documentation/rate-limits-for-the-rest-api.md",
+      "redirect_link": "https://docs.github.com/api/article/body?pathname=/en/rest/using-the-rest-api/rate-limits-for-the-rest-api",
+      "expected_hash": "1f5440f0777dc38c8ff65f28539c9ec28ea816bf7dcd671d51b23b8bb5bc4e7c",
+      "actual_hash": "1f5440f0777dc38c8ff65f28539c9ec28ea816bf7dcd671d51b23b8bb5bc4e7c",
+      "changed": false,
+      "diff": null
+    }
+  ]
+}
