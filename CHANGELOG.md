@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v1.1.0...v1.1.1) (2026-02-04)
+
+
+### Continuous Integration
+
+* add moving minor tag ([2b3891e](https://github.com/hesreallyhim/github-api-usage-monitor/commit/2b3891e1be3a335b1162789a23612b8263550f76))
+
 ## [1.1.0](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v1.0.0...v1.1.0) (2026-02-04)
 
 
