@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320">
+  <defs>
+    <linearGradient id="bgGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#010409"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+    <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#30363d"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="320" fill="url(#bgGrad3)"/>
+
+  <!-- Dot grid pattern -->
+  <g opacity="0.15">
+    <rect width="1280" height="320" fill="url(#dotGrid)"/>
+  </g>
+
+  <!-- Left decorative bar chart -->
+  <g transform="translate(50, 55)">
+    <rect x="0" y="100" width="16" height="100" fill="#238636" opacity="0.6"/>
+    <rect x="24" y="80" width="16" height="120" fill="#238636" opacity="0.7"/>
+    <rect x="48" y="50" width="16" height="150" fill="#238636" opacity="0.8"/>
+    <rect x="72" y="70" width="16" height="130" fill="#238636" opacity="0.9"/>
+    <rect x="96" y="40" width="16" height="160" fill="#238636"/>
+  </g>
+
+  <!-- Main content area -->
+  <g transform="translate(220, 105)">
+    <!-- GitHub icon simplified -->
+    <g transform="translate(-15, 30) scale(1.2)">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"
+            fill="#f0f6fc"
+            transform="scale(1.8)"/>
+    </g>
+
+    <!-- Title -->
+    <g transform="translate(60, 4)">
+      <text fill="#f0f6fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="44" font-weight="600">
+        GitHub API Usage Monitor
+      </text>
+      <text y="48" fill="#8b949e" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28">
+        Track your GitHub workflows' usage
+      </text>
+      <text y="85" fill="#8b949e" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28">
+        of the GitHub API
+      </text>
+    </g>
+
+    <!-- Feature badges -->
+    <g transform="translate(60, 120) scale(1.2)">
+      <g>
+        <rect width="120" height="30" rx="4" fill="#21262d"/>
+        <text x="12" y="15" dominant-baseline="middle"
+              fill="#58a6ff" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="12">⚡ Zero Config</text>
+      </g>
+      <g transform="translate(135, 0)">
+        <rect width="130" height="30" rx="4" fill="#21262d"/>
+        <text x="12" y="15" dominant-baseline="middle"
+              fill="#58a6ff" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="12">🪣 Per-Bucket</text>
+      </g>
+      <g transform="translate(280, 0)">
+        <rect width="140" height="30" rx="4" fill="#21262d"/>
+        <text x="12" y="15" dominant-baseline="middle"
+              fill="#58a6ff" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="12">🧾 Auto Reports</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Right side: Data table preview -->
+  <g transform="translate(850, 85)">
+    <rect width="360" height="180" rx="8" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+
+    <!-- Table header -->
+    <rect width="360" height="36" rx="8" fill="#161b22"/>
+    <rect y="28" width="360" height="8" fill="#161b22"/>
+    <line x1="0" y1="36" x2="360" y2="36" stroke="#30363d" stroke-width="1"/>
+
+    <text x="16" y="24" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="11" font-weight="500">Bucket</text>
+    <text x="100" y="24" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="11" font-weight="500">Used</text>
+    <text x="160" y="24" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="11" font-weight="500">Remaining</text>
+    <text x="260" y="24" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="11" font-weight="500">Limit</text>
+
+    <!-- Row 1: core -->
+    <g transform="translate(0, 50)">
+      <text x="16" y="12" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">core</text>
+      <text x="100" y="12" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">47</text>
+      <text x="160" y="12" fill="#238636" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">4,953</text>
+      <text x="260" y="12" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">5,000</text>
+      <rect x="320" y="2" width="24" height="10" rx="2" fill="#30363d"/>
+      <rect x="320" y="2" width="23" height="10" rx="2" fill="#238636"/>
+    </g>
+
+    <line x1="16" y1="70" x2="344" y2="70" stroke="#21262d" stroke-width="1"/>
+
+    <!-- Row 2: graphql -->
+    <g transform="translate(0, 90)">
+      <text x="16" y="12" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">graphql</text>
+      <text x="100" y="12" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">12</text>
+      <text x="160" y="12" fill="#238636" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">4,988</text>
+      <text x="260" y="12" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">5,000</text>
+      <rect x="320" y="2" width="24" height="10" rx="2" fill="#30363d"/>
+      <rect x="320" y="2" width="24" height="10" rx="2" fill="#238636"/>
+    </g>
+
+    <line x1="16" y1="110" x2="344" y2="110" stroke="#21262d" stroke-width="1"/>
+
+    <!-- Row 3: search -->
+    <g transform="translate(0, 130)">
+      <text x="16" y="12" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">search</text>
+      <text x="100" y="12" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">3</text>
+      <text x="160" y="12" fill="#d29922" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">27</text>
+      <text x="260" y="12" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="13">30</text>
+      <rect x="320" y="2" width="24" height="10" rx="2" fill="#30363d"/>
+      <rect x="320" y="2" width="22" height="10" rx="2" fill="#d29922"/>
+    </g>
+
+    <line x1="16" y1="150" x2="344" y2="150" stroke="#21262d" stroke-width="1"/>
+
+    <text x="16" y="170" fill="#6e7681" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace" font-size="10">Duration: 5m 32s • Polls: 12</text>
+  </g>
+
+  <!-- Top accent line -->
+  <rect x="0" y="0" width="1280" height="3" fill="#238636"/>
+</svg>
