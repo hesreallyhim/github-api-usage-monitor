@@ -18,7 +18,17 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run Release Please
+        id: release
         uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      - name: Update moving major tag
+        if: ${{ steps.release.outputs.release_created }}
+        run: |
+          major="${{ steps.release.outputs.major }}"
+          tag="v${major}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f "$tag"
+          git push -f origin "$tag"
