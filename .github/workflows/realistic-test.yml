@@ -10,10 +10,16 @@ concurrency:
   group: realistic-test
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   realistic:
     name: Realistic — ${{ matrix.name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     strategy:
       max-parallel: 1
       fail-fast: false
@@ -43,6 +49,9 @@ jobs:
   realistic-diag:
     name: Diagnostics — ${{ matrix.name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     needs: [realistic]
     if: ${{ needs.realistic.result != 'skipped' }}
     strategy:
