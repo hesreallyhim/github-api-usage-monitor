@@ -1,22 +1,30 @@
 {
-  "changed": false,
-  "changed_count": 0,
+  "changed": true,
+  "changed_count": 2,
   "results": [
     {
       "file": "docs/github-documentation/rate-limit.md",
       "redirect_link": "https://docs.github.com/api/article/body?pathname=/en/rest/rate-limit/rate-limit",
       "expected_hash": "eab796b16a014b82e54bd3bc27e37f3b0ea8fee2ff127c5c3930d0576f7d44d1",
-      "actual_hash": "eab796b16a014b82e54bd3bc27e37f3b0ea8fee2ff127c5c3930d0576f7d44d1",
-      "changed": false,
-      "diff": null
+      "actual_hash": "1be07610d7cc6f83d50a1fbb63e3ac8b6fe277bd32d71841319f0edb58736242",
+      "changed": true,
+      "diff": {
+        "line": 79,
+        "local_line": "**Response schema:**",
+        "remote_line": "**Response schema (Status: 200):**"
+      }
     },
     {
       "file": "docs/github-documentation/rate-limits-for-the-rest-api.md",
       "redirect_link": "https://docs.github.com/api/article/body?pathname=/en/rest/using-the-rest-api/rate-limits-for-the-rest-api",
       "expected_hash": "1f5440f0777dc38c8ff65f28539c9ec28ea816bf7dcd671d51b23b8bb5bc4e7c",
-      "actual_hash": "1f5440f0777dc38c8ff65f28539c9ec28ea816bf7dcd671d51b23b8bb5bc4e7c",
-      "changed": false,
-      "diff": null
+      "actual_hash": "b66f477c547bfd5548cca384d92d6170b30261cdca1a0e021571f9a511e7ec17",
+      "changed": true,
+      "diff": {
+        "line": 71,
+        "local_line": "",
+        "remote_line": "* *Make too many OAuth access token requests in a short period of time.* No more than 2,000 OAuth access token requests per hour are allowed for GitHub Apps and OAuth apps."
+      }
     }
   ]
 }
