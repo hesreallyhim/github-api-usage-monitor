@@ -20536,7 +20536,7 @@ function expand(str, isTop) {
       var y = numeric(n[1]);
       var width = Math.max(n[0].length, n[1].length)
       var incr = n.length == 3
-        ? Math.abs(numeric(n[2]))
+        ? Math.max(Math.abs(numeric(n[2])), 1)
         : 1;
       var test = lte;
       var reverse = y < x;
@@ -20588,7 +20588,6 @@ function expand(str, isTop) {
 
   return expansions;
 }
-
 
 
 /***/ }),
@@ -35721,7 +35720,7 @@ function expand(str, isTop) {
       var y = numeric(n[1]);
       var width = Math.max(n[0].length, n[1].length)
       var incr = n.length == 3
-        ? Math.abs(numeric(n[2]))
+        ? Math.max(Math.abs(numeric(n[2])), 1)
         : 1;
       var test = lte;
       var reverse = y < x;
@@ -35773,7 +35772,6 @@ function expand(str, isTop) {
 
   return expansions;
 }
-
 
 
 /***/ }),
@@ -93495,8 +93493,9 @@ function toNumber(str, options = {}) {
 
     let trimmedStr = str.trim();
 
-    if (options.skipLike !== undefined && options.skipLike.test(trimmedStr)) return str;
-    else if (str === "0") return 0;
+    if (trimmedStr.length === 0) return str;
+    else if (options.skipLike !== undefined && options.skipLike.test(trimmedStr)) return str;
+    else if (trimmedStr === "0") return 0;
     else if (options.hex && hexRegex.test(trimmedStr)) {
         return parse_int(trimmedStr, 16);
         // }else if (options.oct && octRegex.test(str)) {

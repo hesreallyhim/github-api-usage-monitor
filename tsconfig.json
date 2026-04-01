@@ -14,6 +14,7 @@
     "declarationMap": false,
     "sourceMap": false,
     "moduleResolution": "bundler",
+    "types": ["node"],
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
