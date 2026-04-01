@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -11,11 +11,15 @@ const DEFAULTS = {
   baseBranch: "main",
   remote: "origin",
   branchPrefix: "codex/deps-sweep",
+  worktreeRoot: path.join(os.tmpdir(), "codex-deps-sweep-worktrees"),
   model: "gpt-5-codex",
   reasoning: "medium",
   sandbox: "danger-full-access",
+  isolated: false,
+  keepWorktree: false,
   run: false,
   yes: false,
+  auto: false,
   showThinking: false,
 };
 
@@ -27,12 +31,16 @@ Usage:
 Options:
   --run                      Run codex exec immediately (otherwise print command only)
   --yes                      Skip interactive confirmation when used with --run
+  --auto                     Fully unattended run (equivalent to --run --yes --isolated)
+  --isolated                 Run in a dedicated git worktree (recommended for unattended runs)
+  --keep-worktree            Do not remove worktree after successful run
+  --worktree-root <dir>      Parent directory for isolated worktrees (default: ${DEFAULTS.worktreeRoot})
   --model <name>             Codex model (default: ${DEFAULTS.model})
   --reasoning <level>        low | medium | high (default: ${DEFAULTS.reasoning})
   --sandbox <mode>           read-only | workspace-write | danger-full-access (default: ${DEFAULTS.sandbox})
   --base <branch>            Base branch to update from (default: ${DEFAULTS.baseBranch})
   --remote <name>            Remote name (default: ${DEFAULTS.remote})
-  --branch-prefix <prefix>   Branch prefix for Codex to use (default: ${DEFAULTS.branchPrefix})
+  --branch-prefix <prefix>   Branch prefix for update branches (default: ${DEFAULTS.branchPrefix})
   --show-thinking            Show codex stderr (thinking/debug output)
   --help                     Show this help text
 `.trim();
@@ -50,8 +58,21 @@ function parseArgs(argv) {
       case "--yes":
         options.yes = true;
         break;
+      case "--auto":
+        options.auto = true;
+        break;
+      case "--isolated":
+        options.isolated = true;
+        break;
+      case "--keep-worktree":
+        options.keepWorktree = true;
+        break;
       case "--show-thinking":
         options.showThinking = true;
+        break;
+      case "--worktree-root":
+        i += 1;
+        options.worktreeRoot = requireValue(argv[i], arg);
         break;
       case "--model":
         i += 1;
@@ -86,6 +107,12 @@ function parseArgs(argv) {
     }
   }
 
+  if (options.auto) {
+    options.run = true;
+    options.yes = true;
+    options.isolated = true;
+  }
+
   if (!["low", "medium", "high"].includes(options.reasoning)) {
     throw new Error(`Invalid --reasoning value: ${options.reasoning}`);
   }
@@ -104,20 +131,18 @@ function requireValue(value, flag) {
   return value;
 }
 
-function formatCommand(command, args) {
-  return [command, ...args]
-    .map((part) => formatShellPart(part))
-    .join(" ");
-}
-
 function formatShellPart(part) {
   return /\s/.test(part) ? JSON.stringify(part) : part;
 }
 
-function run(command, args, { check = true, silent = false } = {}) {
-  console.log(`\n$ ${formatCommand(command, args)}`);
+function formatCommand(command, args) {
+  return [command, ...args].map((part) => formatShellPart(part)).join(" ");
+}
+
+function run(command, args, { check = true, silent = false, cwd = process.cwd() } = {}) {
+  console.log(`\n$ (cd ${formatShellPart(cwd)} && ${formatCommand(command, args)})`);
   const result = spawnSync(command, args, {
-    cwd: process.cwd(),
+    cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -141,8 +166,27 @@ function run(command, args, { check = true, silent = false } = {}) {
   return { status: result.status ?? 1, stdout, stderr };
 }
 
-function ensureNodeVersionMatchesNvmrc() {
-  const nvmrcPath = path.join(process.cwd(), ".nvmrc");
+function parseJsonObject(raw, fallback = {}) {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return typeof parsed === "object" && parsed !== null ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function parseDependabotPrs(raw) {
+  const parsed = parseJsonObject(raw, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function ensureNodeVersionMatchesNvmrc(repoRoot) {
+  const nvmrcPath = path.join(repoRoot, ".nvmrc");
   const expectedRaw = readFileSync(nvmrcPath, "utf8").trim();
   const expected = expectedRaw.replace(/^v/, "");
   const current = process.version.replace(/^v/, "");
@@ -155,64 +199,141 @@ function ensureNodeVersionMatchesNvmrc() {
   }
 }
 
-function ensureCleanWorkingTree() {
-  const status = run("git", ["status", "--porcelain"], { silent: true });
+function ensureCleanWorkingTree(repoRoot) {
+  const status = run("git", ["status", "--porcelain"], { silent: true, cwd: repoRoot });
   if (status.stdout.trim().length > 0) {
     throw new Error("Working tree is not clean. Commit or stash changes before running this script.");
   }
 }
 
-function parseDependabotPrs(raw) {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed;
-  } catch {
-    return [];
+function ensureCodexAuthenticated(repoRoot) {
+  const result = run("codex", ["login", "status"], {
+    silent: true,
+    check: false,
+    cwd: repoRoot,
+  });
+  if (result.status !== 0) {
+    throw new Error("Codex CLI is not authenticated. Run `codex login` and try again.");
   }
 }
 
-function buildPrompt({ cwd, options, dependabotPrs, ncuOutput }) {
+function ensureGhAuthenticated(repoRoot) {
+  const result = run("gh", ["auth", "status"], {
+    silent: true,
+    check: false,
+    cwd: repoRoot,
+  });
+  if (result.status !== 0) {
+    throw new Error("GitHub CLI is not authenticated. Run `gh auth login` and try again.");
+  }
+}
+
+function ensureGitIdentityConfigured(repoRoot) {
+  const name = run("git", ["config", "--get", "user.name"], {
+    silent: true,
+    check: false,
+    cwd: repoRoot,
+  }).stdout.trim();
+  const email = run("git", ["config", "--get", "user.email"], {
+    silent: true,
+    check: false,
+    cwd: repoRoot,
+  }).stdout.trim();
+
+  if (!name || !email) {
+    throw new Error(
+      "Git author identity is not configured. Set `git config --global user.name` and `git config --global user.email`.",
+    );
+  }
+}
+
+function nowStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}-${pad(
+    d.getUTCHours(),
+  )}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+}
+
+function sanitizeSegment(value) {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
+function prepareIsolatedWorktree({ repoRoot, options }) {
+  const stamp = nowStamp();
+  const branchName = `${options.branchPrefix}-${stamp}`;
+  const baseRef = `${options.remote}/${options.baseBranch}`;
+  const repoName = sanitizeSegment(path.basename(repoRoot));
+  const root = path.resolve(repoRoot, options.worktreeRoot);
+  mkdirSync(root, { recursive: true });
+  const worktreePath = path.join(root, `${repoName}-${stamp}`);
+
+  run("git", ["worktree", "add", "-b", branchName, worktreePath, baseRef], { cwd: repoRoot });
+
+  return { worktreePath, branchName };
+}
+
+function cleanupWorktree({ repoRoot, worktreePath }) {
+  run("git", ["worktree", "remove", "--force", worktreePath], {
+    cwd: repoRoot,
+    check: false,
+    silent: true,
+  });
+  run("git", ["worktree", "prune"], { cwd: repoRoot, check: false, silent: true });
+}
+
+function buildPrompt({
+  repoRoot,
+  runCwd,
+  options,
+  dependabotPrs,
+  ncuSummary,
+  ncuUpgraded,
+  mode,
+  preparedBranch,
+}) {
   const prsBlock =
     dependabotPrs.length > 0
       ? JSON.stringify(dependabotPrs, null, 2)
       : "No open Dependabot PRs were found for this repository.";
 
+  const upgradedBlock = JSON.stringify(ncuUpgraded, null, 2);
+  const hasNcuUpdates = Object.keys(ncuUpgraded).length > 0;
+
   return `
 You are performing a Codex-assisted dependency maintenance run for this repository.
 
-Repository path: ${cwd}
+Repository root: ${repoRoot}
+Execution directory: ${runCwd}
 Base branch: ${options.baseBranch}
 Remote: ${options.remote}
-Preferred branch prefix: ${options.branchPrefix}
+Requested branch prefix: ${options.branchPrefix}
+Execution mode: ${mode}
+Prepared branch (if provided): ${preparedBranch ?? "(none)"}
 
 Pre-collected context:
 Open Dependabot PRs:
 ${prsBlock}
 
 Output of "npx npm-check-updates --enginesNode":
-${ncuOutput.trim() || "(no output)"}
+${ncuSummary.trim() || "(no output)"}
+
+Output of "npx npm-check-updates --enginesNode --jsonUpgraded":
+${upgradedBlock}
 
 Required workflow:
-1. Start from ${options.remote}/${options.baseBranch} and create a new branch using prefix "${options.branchPrefix}".
-2. Review the Dependabot PR context and ncu output, then attempt to apply dependency updates comprehensively.
-3. Explicitly flag any major version updates and assess potential breaking-change risk.
+1. If execution mode is "isolated-worktree", stay in the prepared branch and directory; do not switch back to ${options.baseBranch}.
+2. Review open Dependabot PR context plus ncu results, and attempt to apply all actionable dependency updates.
+3. Explicitly flag any major version updates and assess breaking-change risk.
 4. If upgrades require code or config changes, make the minimal targeted fixes and explain why they were needed.
 5. Validate with:
    - npm run lint
    - npm run typecheck
    - npm run test:all
    - npm run build:all
-6. If all checks pass, open a normal PR targeting ${options.baseBranch}.
-7. If only partial progress is possible, open a draft PR and clearly document blockers/follow-up.
-8. In the PR body, include updated packages, major-version notes, command outcomes, and any manual follow-up.
+6. If everything is green and changes are valid, open a normal PR targeting ${options.baseBranch}.
+7. If partial progress is made but there are hard blockers, open a draft PR documenting blockers and follow-up.
+8. If no dependency updates are needed (${hasNcuUpdates ? "ncu reports updates present" : "ncu reports no updates"}) and there is no meaningful dependency work to apply from Dependabot context, do not open a PR.
 
 Constraints:
 - Keep diffs focused and minimal.
@@ -231,7 +352,7 @@ async function confirmRun() {
   }
 }
 
-function runCodex({ options, prompt, promptPath }) {
+function runCodex({ options, prompt, promptPath, runCwd }) {
   const codexArgs = [
     "exec",
     "--skip-git-repo-check",
@@ -243,14 +364,14 @@ function runCodex({ options, prompt, promptPath }) {
     options.sandbox,
     "--full-auto",
     "-C",
-    process.cwd(),
+    runCwd,
   ];
 
   console.log("\nLaunching Codex:");
   console.log(`$ ${formatCommand("codex", codexArgs)} < ${promptPath} 2>/dev/null`);
 
   const result = spawnSync("codex", codexArgs, {
-    cwd: process.cwd(),
+    cwd: runCwd,
     input: prompt,
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"],
@@ -277,92 +398,149 @@ function runCodex({ options, prompt, promptPath }) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const cwd = process.cwd();
+  const repoRoot = process.cwd();
 
-  ensureNodeVersionMatchesNvmrc();
-  run("codex", ["--version"], { silent: true });
-  ensureCleanWorkingTree();
+  ensureNodeVersionMatchesNvmrc(repoRoot);
+  run("codex", ["--version"], { silent: true, cwd: repoRoot });
+  ensureCodexAuthenticated(repoRoot);
+  ensureGhAuthenticated(repoRoot);
+  ensureGitIdentityConfigured(repoRoot);
+  run("git", ["fetch", options.remote], { cwd: repoRoot });
 
-  run("git", ["fetch", options.remote]);
-  run("git", ["checkout", options.baseBranch]);
-  run("git", ["pull", "--ff-only", options.remote, options.baseBranch]);
+  let runCwd = repoRoot;
+  let preparedBranch = null;
+  let mode = "in-place";
+  let createdWorktree = false;
+  let worktreePath = null;
 
-  const dependabotResult = run(
-    "gh",
-    [
-      "pr",
-      "list",
-      "--state",
-      "open",
-      "--search",
-      "is:pr is:open author:app/dependabot",
-      "--json",
-      "number,title,headRefName,baseRefName,url",
-    ],
-    { check: false, silent: true },
-  );
-
-  if (dependabotResult.status !== 0) {
-    console.warn("Warning: unable to query Dependabot PRs via gh. Continuing without PR context.");
+  if (options.isolated) {
+    mode = "isolated-worktree";
+    const prepared = prepareIsolatedWorktree({ repoRoot, options });
+    runCwd = prepared.worktreePath;
+    preparedBranch = prepared.branchName;
+    createdWorktree = true;
+    worktreePath = prepared.worktreePath;
+  } else {
+    ensureCleanWorkingTree(repoRoot);
+    run("git", ["checkout", options.baseBranch], { cwd: repoRoot });
+    run("git", ["pull", "--ff-only", options.remote, options.baseBranch], { cwd: repoRoot });
   }
 
-  const ncuResult = run("npx", ["npm-check-updates", "--enginesNode"], { check: true, silent: true });
+  try {
+    const dependabotResult = run(
+      "gh",
+      [
+        "pr",
+        "list",
+        "--state",
+        "open",
+        "--search",
+        "is:pr is:open author:app/dependabot",
+        "--json",
+        "number,title,headRefName,baseRefName,url",
+      ],
+      { check: false, silent: true, cwd: repoRoot },
+    );
 
-  const dependabotPrs = parseDependabotPrs(dependabotResult.stdout);
-  const prompt = buildPrompt({
-    cwd,
-    options,
-    dependabotPrs,
-    ncuOutput: ncuResult.stdout,
-  });
+    if (dependabotResult.status !== 0) {
+      console.warn("Warning: unable to query Dependabot PRs via gh. Continuing without PR context.");
+    }
 
-  const codexDir = mkdtempSync(path.join(os.tmpdir(), "codex-deps-sweep-"));
-  const promptPath = path.join(codexDir, "dependency-sweep.prompt.md");
-  writeFileSync(promptPath, prompt, "utf8");
+    const ncuSummaryResult = run(
+      "npx",
+      ["npm-check-updates", "--enginesNode"],
+      { check: true, silent: true, cwd: runCwd },
+    );
+    const ncuJsonResult = run(
+      "npx",
+      ["npm-check-updates", "--enginesNode", "--jsonUpgraded"],
+      { check: true, silent: true, cwd: runCwd },
+    );
 
-  console.log("\nPrepared Codex dependency sweep prompt:");
-  console.log(`- Prompt file: ${promptPath}`);
-  console.log(`- Model: ${options.model}`);
-  console.log(`- Reasoning: ${options.reasoning}`);
-  console.log(`- Sandbox: ${options.sandbox}`);
-  console.log("- Full auto: true");
-  console.log(`- Open Dependabot PRs detected: ${dependabotPrs.length}`);
+    const dependabotPrs = parseDependabotPrs(dependabotResult.stdout);
+    const ncuUpgraded = parseJsonObject(ncuJsonResult.stdout, {});
+    const hasNcuUpdates = Object.keys(ncuUpgraded).length > 0;
+    const hasDependabotContext = dependabotPrs.length > 0;
 
-  const printableCommand = [
-    "codex",
-    "exec",
-    "--skip-git-repo-check",
-    "-m",
-    options.model,
-    "--config",
-    `model_reasoning_effort="${options.reasoning}"`,
-    "--sandbox",
-    options.sandbox,
-    "--full-auto",
-    "-C",
-    cwd,
-    "<",
-    promptPath,
-    "2>/dev/null",
-  ];
-
-  console.log("\nCommand:");
-  console.log(`$ ${printableCommand.map((part) => formatShellPart(part)).join(" ")}`);
-
-  if (!options.run) {
-    console.log("\nNo Codex execution requested. Re-run with --run when you want to execute it.");
-    return;
-  }
-
-  if (!options.yes) {
-    const approved = await confirmRun();
-    if (!approved) {
-      console.log("Canceled.");
+    if (!hasNcuUpdates && !hasDependabotContext) {
+      console.log("\nNo dependency updates detected (ncu empty, no open Dependabot PRs). Nothing to do.");
       return;
     }
-  }
 
-  runCodex({ options, prompt, promptPath });
+    const prompt = buildPrompt({
+      repoRoot,
+      runCwd,
+      options,
+      dependabotPrs,
+      ncuSummary: ncuSummaryResult.stdout,
+      ncuUpgraded,
+      mode,
+      preparedBranch,
+    });
+
+    const promptDir = mkdtempSync(path.join(os.tmpdir(), "codex-deps-sweep-prompt-"));
+    const promptPath = path.join(promptDir, "dependency-sweep.prompt.md");
+    writeFileSync(promptPath, prompt, "utf8");
+
+    console.log("\nPrepared Codex dependency sweep prompt:");
+    console.log(`- Prompt file: ${promptPath}`);
+    console.log(`- Model: ${options.model}`);
+    console.log(`- Reasoning: ${options.reasoning}`);
+    console.log(`- Sandbox: ${options.sandbox}`);
+    console.log("- Full auto: true");
+    console.log(`- Execution mode: ${mode}`);
+    console.log(`- Working directory: ${runCwd}`);
+    if (preparedBranch) {
+      console.log(`- Prepared branch: ${preparedBranch}`);
+    }
+    console.log(`- Open Dependabot PRs detected: ${dependabotPrs.length}`);
+    console.log(`- ncu upgraded package count: ${Object.keys(ncuUpgraded).length}`);
+
+    const printableCommand = [
+      "codex",
+      "exec",
+      "--skip-git-repo-check",
+      "-m",
+      options.model,
+      "--config",
+      `model_reasoning_effort="${options.reasoning}"`,
+      "--sandbox",
+      options.sandbox,
+      "--full-auto",
+      "-C",
+      runCwd,
+      "<",
+      promptPath,
+      "2>/dev/null",
+    ];
+
+    console.log("\nCommand:");
+    console.log(`$ ${printableCommand.map((part) => formatShellPart(part)).join(" ")}`);
+
+    if (!options.run) {
+      console.log("\nNo Codex execution requested. Re-run with --run when you want to execute it.");
+      return;
+    }
+
+    if (!options.yes) {
+      const approved = await confirmRun();
+      if (!approved) {
+        console.log("Canceled.");
+        return;
+      }
+    }
+
+    runCodex({ options, prompt, promptPath, runCwd });
+  } finally {
+    if (createdWorktree && worktreePath) {
+      if (!options.keepWorktree && options.run) {
+        cleanupWorktree({ repoRoot, worktreePath });
+        console.log(`Cleaned up worktree: ${worktreePath}`);
+      } else {
+        console.log(`Worktree preserved: ${worktreePath}`);
+      }
+    }
+  }
 }
 
 main().catch((error) => {

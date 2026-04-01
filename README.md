@@ -110,6 +110,20 @@ The statements made in this document, and the implementation decisions in the co
 
 ## Maintainer Workflow: Codex-Assisted Dependency Sweep
 
+Environment requirements:
+- `git`, `node`, `npm`, `npx`, `gh`, and `codex` on `PATH`
+- Node version matching `.nvmrc` (`20.19.x` currently)
+- authenticated Codex CLI session (`codex login`)
+- authenticated GitHub CLI session (`gh auth login`)
+- git author identity configured (`git config user.name` / `git config user.email`)
+- network access to `origin` with permission to push branches and open PRs
+
+You can verify all of this with:
+
+```bash
+npm run deps:codex:doctor
+```
+
 For supervised dependency maintenance (including Dependabot PR context, `npm-check-updates`, validation, and PR creation), use:
 
 ```bash
@@ -132,6 +146,25 @@ You can pass model/reasoning/sandbox overrides through npm arguments, for exampl
 
 ```bash
 npm run deps:codex:run -- --model gpt-5 --reasoning high --sandbox danger-full-access
+```
+
+For unattended operation in an isolated git worktree (recommended for recurring runs), use:
+
+```bash
+npm run deps:codex:auto
+```
+
+Unattended mode:
+- fetches `origin`
+- creates a dedicated worktree from `origin/main`
+- runs Codex end-to-end in that worktree
+- does nothing when no dependency updates are detected (and no open Dependabot PR context exists)
+- opens a normal PR when checks pass, or a draft PR when blockers remain
+
+You can preserve the generated worktree for debugging by passing `--keep-worktree`:
+
+```bash
+npm run deps:codex:auto -- --keep-worktree
 ```
 
 ## License
