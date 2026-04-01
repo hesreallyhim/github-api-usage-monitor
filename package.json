@@ -11,6 +11,8 @@
     "build:poller": "ncc build src/poller-entry.ts -o dist/poller",
     "build:all": "npm run clean && npm run build && npm run build:pre && npm run build:post && npm run build:poller",
     "check-updates": "npx npm-check-updates --enginesNode --target semver",
+    "deps:codex:prep": "node scripts/codex-dependency-sweep.mjs",
+    "deps:codex:run": "node scripts/codex-dependency-sweep.mjs --run",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

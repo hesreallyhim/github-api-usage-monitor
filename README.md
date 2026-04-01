@@ -108,6 +108,32 @@ Windows is not supported (the action will fail fast with a clear error).
 
 The statements made in this document, and the implementation decisions in the code, are made in strict adherence to the GitHub API and Actions documentation at the time of writing. In addition, our CI processes regularly check for updates to the core documents. Best efforts have been made for strict compliance with GitHub's policy recommendations and guidelines - however, we accept no responsibility for any penalties incurred by the use of this action.
 
+## Maintainer Workflow: Codex-Assisted Dependency Sweep
+
+For supervised dependency maintenance (including Dependabot PR context, `npm-check-updates`, validation, and PR creation), use:
+
+```bash
+npm run deps:codex:prep
+```
+
+That command will:
+- sync local `main` with `origin/main`
+- list open Dependabot PRs
+- run `npx npm-check-updates --enginesNode`
+- generate a ready-to-run Codex prompt in a temporary file (path is printed in output)
+
+To execute the prepared prompt immediately with Codex:
+
+```bash
+npm run deps:codex:run
+```
+
+You can pass model/reasoning/sandbox overrides through npm arguments, for example:
+
+```bash
+npm run deps:codex:run -- --model gpt-5 --reasoning high --sandbox danger-full-access
+```
+
 ## License
 
 MIT 2026 &copy; Really Him
