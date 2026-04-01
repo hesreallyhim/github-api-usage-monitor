@@ -112,7 +112,7 @@ The statements made in this document, and the implementation decisions in the co
 
 Environment requirements:
 - `git`, `node`, `npm`, `npx`, `gh`, and `codex` on `PATH`
-- Node version matching `.nvmrc` (`20.19.x` currently)
+- Node version matching `.nvmrc`
 - authenticated Codex CLI session (`codex login`)
 - authenticated GitHub CLI session (`gh auth login`)
 - git author identity configured (`git config user.name` / `git config user.email`)
@@ -166,6 +166,28 @@ You can preserve the generated worktree for debugging by passing `--keep-worktre
 ```bash
 npm run deps:codex:auto -- --keep-worktree
 ```
+
+### Multi-Repo Fleet Mode (Reusable)
+
+For a reusable cross-repo dependency sweep runner, use:
+
+```bash
+npm run deps:codex:fleet -- --config /absolute/path/to/dependency-fleet.config.json --yes
+```
+
+Use [scripts/dependency-fleet.config.example.json](/Users/hesreallyhim/coding/projects/github-api-usage-monitor/scripts/dependency-fleet.config.example.json) as the template for your config.
+
+Fleet behavior:
+- processes each repo in an isolated worktree
+- supports `scope: "prs"` or `scope: "issues-and-updates"` per repo
+- passes Dependabot PR/issue/alert context to Codex
+- asks Codex to no-op when nothing is needed
+- asks Codex to open a normal PR when green, or draft PR when blockers remain
+
+Useful flags:
+- `--dry-run` to prepare prompts/branches without running Codex
+- `--keep-worktree` to inspect generated worktrees
+- `--stop-on-error` to fail fast
 
 ## License
 

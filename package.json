@@ -15,6 +15,7 @@
     "deps:codex:prep": "node scripts/codex-dependency-sweep.mjs",
     "deps:codex:run": "node scripts/codex-dependency-sweep.mjs --run",
     "deps:codex:auto": "node scripts/codex-dependency-sweep.mjs --auto",
+    "deps:codex:fleet": "node scripts/codex-dependency-fleet.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

@@ -1,0 +1,15 @@
+{
+  "defaults": {
+    "scope": "issues-and-updates",
+    "baseBranch": "main"
+  },
+  "repos": [
+    {
+      "path": "/absolute/path/to/repo-one"
+    },
+    {
+      "path": "/absolute/path/to/repo-two",
+      "scope": "prs"
+    }
+  ]
+}
