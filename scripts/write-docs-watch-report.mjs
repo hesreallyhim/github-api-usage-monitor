@@ -69,6 +69,23 @@ function parsePatchStats(patchText) {
 }
 
 function defaultAssessment(payload) {
+  const changedWithoutBaseline = payload.results.some(
+    (item) => item.changed && item.baseline_source === 'none',
+  );
+
+  if (changedWithoutBaseline) {
+    return {
+      status: 'bootstrap-required',
+      impactLevel: 'unknown',
+      requiresProjectChanges: 'unknown',
+      confidence: 'n/a',
+      rationale:
+        'Changes were detected relative to the committed manifest, but at least one changed file has no private baseline snapshot. This run cannot produce a reliable readable diff or justify a project-impact review on its own.',
+      recommendedAction:
+        'Run `npm run sync:github-docs-state`, then rerun `npm run docs-watch:local` (or `npm run docs-watch:review`). Do not open or update a PR from this run alone.',
+    };
+  }
+
   if (!payload.changed) {
     return {
       status: 'completed',
@@ -123,6 +140,7 @@ async function main() {
   lines.push(`- changed: ${checkPayload.changed}`);
   lines.push(`- changed_count: ${checkPayload.changed_count}`);
   lines.push(`- state_dir: ${checkPayload.state_dir ?? 'none'}`);
+  lines.push(`- bootstrap_required: ${assessment.status === 'bootstrap-required'}`);
   lines.push('');
 
   lines.push('## Monitored Files');
@@ -185,6 +203,10 @@ async function main() {
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `changed=${checkPayload.changed}\n`);
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `changed_count=${checkPayload.changed_count}\n`);
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `assessment_status=${assessment.status}\n`);
+    fs.appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `bootstrap_required=${assessment.status === 'bootstrap-required'}\n`,
+    );
   }
 
   if (writeSummary) {
@@ -195,6 +217,7 @@ async function main() {
       `- changed: ${checkPayload.changed}`,
       `- changed_count: ${checkPayload.changed_count}`,
       `- assessment_status: ${assessment.status}`,
+      `- bootstrap_required: ${assessment.status === 'bootstrap-required'}`,
     ];
 
     if (process.env.GITHUB_STEP_SUMMARY) {

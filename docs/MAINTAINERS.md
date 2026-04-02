@@ -101,11 +101,15 @@ The docs-watch process is local-only and intended for maintainers.
 - Monitored metadata lives in `docs/github-documentation/watch-list.json`.
 - Local private state defaults to `.tmp/docs-watch/state` and stores snapshots
   used for diffing.
+- For recurring runs, prefer a stable private path outside the worktree via
+  `DOC_WATCH_STATE_DIR` so snapshots survive `.tmp/` cleanup and worktree churn.
 
 ### Local commands
 
 - Seed or refresh baseline snapshots:
   - `npm run sync:github-docs-state`
+- Bootstrap-aware review entrypoint (recommended):
+  - `npm run docs-watch:review`
 - Run check + diff + report (standard weekly run):
   - `npm run docs-watch:local`
 - Individual steps:
@@ -122,12 +126,24 @@ The docs-watch process is local-only and intended for maintainers.
 
 ### Maintainer review loop
 
-1. Run `npm run docs-watch:local` (or let weekly Codex automation run it).
+1. Prefer `npm run docs-watch:review` (or let weekly Codex automation use the
+   same protocol).
 2. Review `.tmp/docs-watch/docs-watch-report.md` for correctness.
-3. If docs changed, validate impact classification and decide if project updates
-   are required.
-4. If required, open/update a draft fix PR with project and metadata changes
+3. If the report status is `bootstrap-required`, do not open or update a PR from
+   that run. Seed private state with `npm run sync:github-docs-state`, then rerun
+   the exact review.
+4. Only if the synced exact review still reports `changed: true`, validate impact
+   classification and decide if project updates are required.
+5. If required, open/update a draft fix PR with project and metadata changes
    only.
+
+### Recommended protocol
+
+1. Set a stable private state directory, for example:
+   - `export DOC_WATCH_STATE_DIR="$HOME/.local/state/github-api-usage-monitor/docs-watch"`
+2. Run `npm run docs-watch:review`.
+3. Treat the first seeded run as bootstrap, not as a source of patch review.
+4. Only create PRs from an exact synced run with `changed: true`.
 
 ## Notes
 
