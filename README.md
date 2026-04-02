@@ -103,28 +103,10 @@ Windows is not supported (the action will fail fast with a clear error).
 - GitHub's primary rate limits appear to use fixed windows with reset times anchored to the first observed usage of the token (per resource bucket), rather than a rolling window. For `core`, e.g., this is 60 minutes from the first usage within an action. For other buckets, such as `search` the reset window is 60 seconds from the time of first use. (See [this document](./docs/RATE_LIMIT_TABLE.md) for a bucket-by-bucket breakdown.)
 - What happens after this reset window is crossed is that the "Amount Remaining" data is reset to the maximum for that bucket, and the "Reset Time" is also reset to the full reset-window duration from the time of polling. This is a major design constraint on an action such as the current one, because a polling-based measurement must be designed such that the gap between the last poll and the next reset time is minimized - any activity that happens after a given poll, and before the next reset, will be invisible to the poller. That is the justification for the strategy of 30-second polling, with some "extra polls" at the designated reset time - this allows for high-confidence tracking of API requests to buckets with 60-second reset windows. 
 
-## GitHub Docs Watch
-
-This repository uses a local-only docs-watch flow.
-
-Important copyright constraint: upstream GitHub docs bodies are **not** stored in this public repository. The tracked files under [`docs/github-documentation`](./docs/github-documentation) are metadata-only.
-
-Local commands:
-
-- `npm run sync:github-docs-state` (seed or refresh private baseline snapshots)
-- `npm run check:github-docs`
-- `npm run diff:github-docs`
-- `npm run report:github-docs`
-- `npm run docs-watch:local` (check + readable diff + run report)
-
-Local outputs default to `.tmp/docs-watch/`, including `.tmp/docs-watch/docs-watch-report.md`.
-
-Recommended weekly automation: run `npm run docs-watch:local`, review `.tmp/docs-watch/docs-watch-report.md` for correctness, then have Codex classify impact and open a draft fix PR when project changes are required.
-
 
 ## Disclaimer
 
-The statements made in this document, and the implementation decisions in the code, are made in strict adherence to the GitHub API and Actions documentation at the time of writing. In addition, our CI processes regularly check for updates to the core documents using metadata-only tracking in this public repository and private-state diffs for detailed review. Best efforts have been made for strict compliance with GitHub's policy recommendations and guidelines - however, we accept no responsibility for any penalties incurred by the use of this action.
+The statements made in this document, and the implementation decisions in the code, are made in strict adherence to the GitHub API and Actions documentation at the time of writing. In addition, our CI processes regularly check for updates to the core documents. Best efforts have been made for strict compliance with GitHub's policy recommendations and guidelines - however, we accept no responsibility for any penalties incurred by the use of this action.
 
 ## License
 
