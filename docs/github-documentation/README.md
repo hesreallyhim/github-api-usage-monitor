@@ -6,8 +6,8 @@ Copyright policy constraint: upstream GitHub documentation bodies are intentiona
 
 ## Files
 
-- `rate-limit.md` and `rate-limits-for-the-rest-api.md`: frontmatter metadata (`redirect-link`, `content-sha256`) used for change detection.
-- No upstream Markdown body text is stored here.
+- `watch-list.json`: monitored pages and expected hashes (`redirect_link`, `content_sha256`).
+- Upstream page Markdown files are intentionally not tracked.
 
 ## Private state (required for full diff + LLM review)
 

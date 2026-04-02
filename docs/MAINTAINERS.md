@@ -98,7 +98,7 @@ regressions and to verify the poller and post hook behave as expected.
 The docs-watch process is local-only and intended for maintainers.
 
 - Do not store upstream GitHub documentation bodies in this public repository.
-- Monitored metadata files live in `docs/github-documentation/*.md`.
+- Monitored metadata lives in `docs/github-documentation/watch-list.json`.
 - Local private state defaults to `.tmp/docs-watch/state` and stores snapshots
   used for diffing.
 

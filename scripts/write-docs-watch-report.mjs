@@ -93,7 +93,10 @@ function defaultAssessment(payload) {
 }
 
 function escapePipe(value) {
-  return String(value ?? '').replace(/\|/g, '\\|');
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ');
 }
 
 async function main() {

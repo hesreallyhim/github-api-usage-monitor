@@ -13,48 +13,19 @@ function getArgValue(flag, fallback = null) {
   return value ?? fallback;
 }
 
-const docsDir = getArgValue('--dir', 'docs/github-documentation');
+const manifestPath = getArgValue('--manifest', 'docs/github-documentation/watch-list.json');
 const outputPath = getArgValue('--output', null);
 const stateDir = getArgValue('--state-dir', null);
 const remoteSnapshotsDir = getArgValue('--remote-snapshots-dir', null);
 const useLocal = args.includes('--use-local');
-const updateFrontmatter = args.includes('--update-frontmatter');
-const replaceBody = args.includes('--replace-body');
+const updateManifest = args.includes('--update-manifest') || args.includes('--update-frontmatter');
 const writeState = args.includes('--write-state');
 const failOnChange = args.includes('--fail-on-change');
 const writeSummary = args.includes('--write-summary');
 const includeDiffSnippets = args.includes('--include-diff-snippets');
 
-if (replaceBody && !updateFrontmatter) {
-  throw new Error('--replace-body requires --update-frontmatter');
-}
-
 if (writeState && !stateDir) {
   throw new Error('--write-state requires --state-dir');
-}
-
-function splitFrontmatter(text) {
-  const match = text.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/);
-  if (!match) {
-    return null;
-  }
-  const frontmatter = match[1];
-  const body = text.slice(match[0].length);
-  return { frontmatter, body };
-}
-
-function parseFrontmatterMap(frontmatter) {
-  const map = new Map();
-  for (const line of frontmatter.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const idx = line.indexOf(':');
-    if (idx === -1) continue;
-    const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
-    map.set(key, value);
-  }
-  return map;
 }
 
 function normalizeBody(text) {
@@ -89,52 +60,18 @@ function findFirstDiff(localBody, remoteBody, withSnippets) {
   return null;
 }
 
-function updateFrontmatterHash(frontmatter, newHash) {
-  const lines = frontmatter.split(/\r?\n/);
-  const existingIndex = lines.findIndex((line) => line.trim().startsWith('content-sha256:'));
-  const newLine = `content-sha256: ${newHash}`;
-
-  if (existingIndex !== -1) {
-    lines[existingIndex] = newLine;
-  } else {
-    const redirectIndex = lines.findIndex((line) => line.trim().startsWith('redirect-link:'));
-    if (redirectIndex !== -1) {
-      lines.splice(redirectIndex + 1, 0, newLine);
-    } else {
-      lines.push(newLine);
-    }
-  }
-
-  return lines.join('\n');
-}
-
 function resolveStateSnapshotPath(filePath) {
   if (!stateDir) return null;
   return path.join(stateDir, 'snapshots', path.basename(filePath));
 }
 
-function readBaselineBody(filePath, fallbackBody) {
+function readBaselineBody(filePath) {
   const snapshotPath = resolveStateSnapshotPath(filePath);
-  if (snapshotPath) {
-    if (fs.existsSync(snapshotPath)) {
-      return {
-        body: normalizeBody(fs.readFileSync(snapshotPath, 'utf8')),
-        source: 'state',
-        snapshotPath,
-      };
-    }
+  if (snapshotPath && fs.existsSync(snapshotPath)) {
     return {
-      body: '',
-      source: 'none',
-      snapshotPath: null,
-    };
-  }
-
-  if (fallbackBody.trim().length > 0) {
-    return {
-      body: normalizeBody(fallbackBody),
-      source: 'repo',
-      snapshotPath: null,
+      body: normalizeBody(fs.readFileSync(snapshotPath, 'utf8')),
+      source: 'state',
+      snapshotPath,
     };
   }
 
@@ -150,6 +87,51 @@ function writeBody(filePath, body) {
   fs.writeFileSync(filePath, normalizeBody(body), 'utf8');
 }
 
+function loadManifest(filePath) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Manifest file not found: ${filePath}`);
+  }
+
+  const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const documents = Array.isArray(raw) ? raw : raw.documents;
+
+  if (!Array.isArray(documents)) {
+    throw new Error(`Manifest must contain a documents array: ${filePath}`);
+  }
+
+  const normalizedDocs = documents.map((doc, idx) => {
+    const file = String(doc.file ?? '').trim();
+    const redirectLink = String(doc.redirect_link ?? '').trim();
+    const expectedHash = doc.content_sha256 ? String(doc.content_sha256).trim() : null;
+
+    if (!file) {
+      throw new Error(`Manifest document at index ${idx} is missing file`);
+    }
+
+    if (!redirectLink) {
+      throw new Error(`Manifest document at index ${idx} is missing redirect_link`);
+    }
+
+    return {
+      file,
+      markdown_link: doc.markdown_link ? String(doc.markdown_link).trim() : null,
+      redirect_link: redirectLink,
+      content_sha256: expectedHash,
+    };
+  });
+
+  normalizedDocs.sort((a, b) => a.file.localeCompare(b.file));
+
+  return {
+    root: raw,
+    documents: normalizedDocs,
+    write(updatedDocuments) {
+      const payload = Array.isArray(raw) ? updatedDocuments : { ...raw, documents: updatedDocuments };
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2) + '\n', 'utf8');
+    },
+  };
+}
+
 async function fetchRemoteBody(url) {
   const response = await fetch(url, {
     headers: {
@@ -163,35 +145,18 @@ async function fetchRemoteBody(url) {
 }
 
 async function main() {
-  const entries = fs
-    .readdirSync(docsDir)
-    .filter((file) => file.endsWith('.md'))
-    .filter((file) => file.toLowerCase() !== 'readme.md')
-    .sort()
-    .map((file) => path.join(docsDir, file));
+  const manifest = loadManifest(manifestPath);
 
   const results = [];
   let changedCount = 0;
 
-  for (const file of entries) {
-    const text = fs.readFileSync(file, 'utf8');
-    const parsed = splitFrontmatter(text);
-    if (!parsed) {
-      throw new Error(`Missing frontmatter in ${file}`);
-    }
+  const updatedDocuments = [];
 
-    const frontmatterMap = parseFrontmatterMap(parsed.frontmatter);
-    const redirectLink = frontmatterMap.get('redirect-link');
-    const expectedHash = frontmatterMap.get('content-sha256') ?? null;
-
-    if (!redirectLink) {
-      throw new Error(`Missing redirect-link in ${file}`);
-    }
-
-    const baseline = readBaselineBody(file, parsed.body);
-    const remoteBody = useLocal ? baseline.body : normalizeBody(await fetchRemoteBody(redirectLink));
+  for (const doc of manifest.documents) {
+    const baseline = readBaselineBody(doc.file);
+    const remoteBody = useLocal ? baseline.body : normalizeBody(await fetchRemoteBody(doc.redirect_link));
     const actualHash = sha256(remoteBody);
-    const changed = expectedHash !== actualHash;
+    const changed = doc.content_sha256 !== actualHash;
 
     if (changed) changedCount += 1;
 
@@ -201,30 +166,31 @@ async function main() {
 
     let remoteSnapshotFile = null;
     if (remoteSnapshotsDir) {
-      const remotePath = path.join(remoteSnapshotsDir, path.basename(file));
+      const remotePath = path.join(remoteSnapshotsDir, path.basename(doc.file));
       writeBody(remotePath, remoteBody);
       remoteSnapshotFile = path.relative(process.cwd(), remotePath);
     }
 
     if (writeState) {
-      const snapshotPath = resolveStateSnapshotPath(file);
+      const snapshotPath = resolveStateSnapshotPath(doc.file);
       if (!snapshotPath) {
-        throw new Error(`Unable to resolve state snapshot path for ${file}`);
+        throw new Error(`Unable to resolve state snapshot path for ${doc.file}`);
       }
       writeBody(snapshotPath, remoteBody);
     }
 
-    if (updateFrontmatter) {
-      const nextFrontmatter = updateFrontmatterHash(parsed.frontmatter, actualHash);
-      const nextBody = replaceBody ? remoteBody : parsed.body;
-      const nextText = `---\n${nextFrontmatter}\n---\n${nextBody}`;
-      fs.writeFileSync(file, nextText, 'utf8');
-    }
+    const updatedDoc = {
+      ...doc,
+      content_sha256: updateManifest ? actualHash : doc.content_sha256,
+    };
+
+    updatedDocuments.push(updatedDoc);
 
     results.push({
-      file: path.relative(process.cwd(), file),
-      redirect_link: redirectLink,
-      expected_hash: expectedHash,
+      file: doc.file,
+      markdown_link: doc.markdown_link,
+      redirect_link: doc.redirect_link,
+      expected_hash: doc.content_sha256,
       actual_hash: actualHash,
       changed,
       baseline_source: baseline.source,
@@ -234,11 +200,16 @@ async function main() {
     });
   }
 
+  if (updateManifest) {
+    manifest.write(updatedDocuments);
+  }
+
   const payload = {
     changed: changedCount > 0,
     changed_count: changedCount,
     state_dir: stateDir,
     remote_snapshots_dir: remoteSnapshotsDir,
+    manifest_path: manifestPath,
     results,
   };
 

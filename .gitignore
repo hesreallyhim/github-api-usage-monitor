@@ -138,3 +138,5 @@ docs/planning/
 docs/github-documentation/docs-check.json
 docs/github-documentation/docs-diff.md
 docs/github-documentation/docs-diff.patch
+docs/github-documentation/rate-limit.md
+docs/github-documentation/rate-limits-for-the-rest-api.md
