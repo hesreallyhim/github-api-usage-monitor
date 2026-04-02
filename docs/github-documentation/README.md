@@ -22,6 +22,7 @@ Example local state location:
 1. (Optional, first run) `npm run sync:github-docs-state`
 2. `npm run check:github-docs`
 3. `npm run diff:github-docs`
-4. Ask Codex to review `.tmp/docs-watch/docs-diff.md` and classify project impact.
+4. `npm run report:github-docs`
+5. Ask Codex to review `.tmp/docs-watch/docs-watch-report.md` and classify project impact.
 
 Outputs are written under `.tmp/docs-watch/` by default.

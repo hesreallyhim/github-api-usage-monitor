@@ -114,11 +114,12 @@ Local commands:
 - `npm run sync:github-docs-state` (seed or refresh private baseline snapshots)
 - `npm run check:github-docs`
 - `npm run diff:github-docs`
-- `npm run docs-watch:local` (check + readable diff)
+- `npm run report:github-docs`
+- `npm run docs-watch:local` (check + readable diff + run report)
 
-Local outputs default to `.tmp/docs-watch/`.
+Local outputs default to `.tmp/docs-watch/`, including `.tmp/docs-watch/docs-watch-report.md`.
 
-Recommended weekly automation: run `npm run docs-watch:local`, then have Codex review `.tmp/docs-watch/docs-diff.md`, classify impact, and open a draft fix PR when project changes are required.
+Recommended weekly automation: run `npm run docs-watch:local`, review `.tmp/docs-watch/docs-watch-report.md` for correctness, then have Codex classify impact and open a draft fix PR when project changes are required.
 
 
 ## Disclaimer
