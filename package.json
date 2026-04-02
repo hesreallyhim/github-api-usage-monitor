@@ -23,7 +23,10 @@
     "lint:fix": "eslint src test --fix",
     "typecheck": "tsc --noEmit",
     "generate:self-test": "tsx scripts/generate-self-test.ts",
-    "check:github-docs": "node scripts/check-github-docs.mjs --output docs/github-documentation/docs-check.json --write-summary",
+    "check:github-docs": "node scripts/check-github-docs.mjs --state-dir \"${DOC_WATCH_STATE_DIR:-.tmp/docs-watch/state}\" --remote-snapshots-dir .tmp/docs-watch/remote --output .tmp/docs-watch/docs-check.json --write-summary",
+    "diff:github-docs": "node scripts/render-github-doc-diff.mjs --check .tmp/docs-watch/docs-check.json --output .tmp/docs-watch/docs-diff.md --patch-output .tmp/docs-watch/docs-diff.patch --write-summary",
+    "docs-watch:local": "npm run check:github-docs && npm run diff:github-docs",
+    "sync:github-docs-state": "node scripts/check-github-docs.mjs --state-dir \"${DOC_WATCH_STATE_DIR:-.tmp/docs-watch/state}\" --write-state --update-frontmatter --output .tmp/docs-watch/docs-check-sync.json --write-summary",
     "clean": "rm -rf dist",
     "prepare": "husky",
     "prepublishOnly": "npm run build:all"

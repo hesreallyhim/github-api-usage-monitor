@@ -15,10 +15,23 @@ function getArgValue(flag, fallback = null) {
 
 const docsDir = getArgValue('--dir', 'docs/github-documentation');
 const outputPath = getArgValue('--output', null);
+const stateDir = getArgValue('--state-dir', null);
+const remoteSnapshotsDir = getArgValue('--remote-snapshots-dir', null);
 const useLocal = args.includes('--use-local');
 const updateFrontmatter = args.includes('--update-frontmatter');
+const replaceBody = args.includes('--replace-body');
+const writeState = args.includes('--write-state');
 const failOnChange = args.includes('--fail-on-change');
 const writeSummary = args.includes('--write-summary');
+const includeDiffSnippets = args.includes('--include-diff-snippets');
+
+if (replaceBody && !updateFrontmatter) {
+  throw new Error('--replace-body requires --update-frontmatter');
+}
+
+if (writeState && !stateDir) {
+  throw new Error('--write-state requires --state-dir');
+}
 
 function splitFrontmatter(text) {
   const match = text.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/);
@@ -58,7 +71,7 @@ function truncateLine(line, maxLength = 200) {
   return `${line.slice(0, maxLength)}…`;
 }
 
-function findFirstDiff(localBody, remoteBody) {
+function findFirstDiff(localBody, remoteBody, withSnippets) {
   const localLines = localBody.split('\n');
   const remoteLines = remoteBody.split('\n');
   const max = Math.max(localLines.length, remoteLines.length);
@@ -68,20 +81,16 @@ function findFirstDiff(localBody, remoteBody) {
     if (localLine !== remoteLine) {
       return {
         line: i + 1,
-        local_line: truncateLine(localLine),
-        remote_line: truncateLine(remoteLine),
+        local_line: withSnippets ? truncateLine(localLine) : null,
+        remote_line: withSnippets ? truncateLine(remoteLine) : null,
       };
     }
   }
   return null;
 }
 
-function updateFrontmatterHash(originalText, newHash) {
-  const parsed = splitFrontmatter(originalText);
-  if (!parsed) {
-    throw new Error('Missing frontmatter');
-  }
-  const lines = parsed.frontmatter.split(/\r?\n/);
+function updateFrontmatterHash(frontmatter, newHash) {
+  const lines = frontmatter.split(/\r?\n/);
   const existingIndex = lines.findIndex((line) => line.trim().startsWith('content-sha256:'));
   const newLine = `content-sha256: ${newHash}`;
 
@@ -96,7 +105,49 @@ function updateFrontmatterHash(originalText, newHash) {
     }
   }
 
-  return `---\n${lines.join('\n')}\n---\n${parsed.body}`;
+  return lines.join('\n');
+}
+
+function resolveStateSnapshotPath(filePath) {
+  if (!stateDir) return null;
+  return path.join(stateDir, 'snapshots', path.basename(filePath));
+}
+
+function readBaselineBody(filePath, fallbackBody) {
+  const snapshotPath = resolveStateSnapshotPath(filePath);
+  if (snapshotPath) {
+    if (fs.existsSync(snapshotPath)) {
+      return {
+        body: normalizeBody(fs.readFileSync(snapshotPath, 'utf8')),
+        source: 'state',
+        snapshotPath,
+      };
+    }
+    return {
+      body: '',
+      source: 'none',
+      snapshotPath: null,
+    };
+  }
+
+  if (fallbackBody.trim().length > 0) {
+    return {
+      body: normalizeBody(fallbackBody),
+      source: 'repo',
+      snapshotPath: null,
+    };
+  }
+
+  return {
+    body: '',
+    source: 'none',
+    snapshotPath: null,
+  };
+}
+
+function writeBody(filePath, body) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, normalizeBody(body), 'utf8');
 }
 
 async function fetchRemoteBody(url) {
@@ -115,6 +166,8 @@ async function main() {
   const entries = fs
     .readdirSync(docsDir)
     .filter((file) => file.endsWith('.md'))
+    .filter((file) => file.toLowerCase() !== 'readme.md')
+    .sort()
     .map((file) => path.join(docsDir, file));
 
   const results = [];
@@ -135,17 +188,37 @@ async function main() {
       throw new Error(`Missing redirect-link in ${file}`);
     }
 
-    const localBody = normalizeBody(parsed.body);
-    const remoteBody = useLocal ? localBody : normalizeBody(await fetchRemoteBody(redirectLink));
+    const baseline = readBaselineBody(file, parsed.body);
+    const remoteBody = useLocal ? baseline.body : normalizeBody(await fetchRemoteBody(redirectLink));
     const actualHash = sha256(remoteBody);
     const changed = expectedHash !== actualHash;
-    const diff = changed ? findFirstDiff(localBody, remoteBody) : null;
 
     if (changed) changedCount += 1;
 
+    const diff = changed && baseline.source !== 'none'
+      ? findFirstDiff(baseline.body, remoteBody, includeDiffSnippets)
+      : null;
+
+    let remoteSnapshotFile = null;
+    if (remoteSnapshotsDir) {
+      const remotePath = path.join(remoteSnapshotsDir, path.basename(file));
+      writeBody(remotePath, remoteBody);
+      remoteSnapshotFile = path.relative(process.cwd(), remotePath);
+    }
+
+    if (writeState) {
+      const snapshotPath = resolveStateSnapshotPath(file);
+      if (!snapshotPath) {
+        throw new Error(`Unable to resolve state snapshot path for ${file}`);
+      }
+      writeBody(snapshotPath, remoteBody);
+    }
+
     if (updateFrontmatter) {
-      const updated = updateFrontmatterHash(text, actualHash);
-      fs.writeFileSync(file, updated, 'utf8');
+      const nextFrontmatter = updateFrontmatterHash(parsed.frontmatter, actualHash);
+      const nextBody = replaceBody ? remoteBody : parsed.body;
+      const nextText = `---\n${nextFrontmatter}\n---\n${nextBody}`;
+      fs.writeFileSync(file, nextText, 'utf8');
     }
 
     results.push({
@@ -154,6 +227,9 @@ async function main() {
       expected_hash: expectedHash,
       actual_hash: actualHash,
       changed,
+      baseline_source: baseline.source,
+      baseline_snapshot_file: baseline.snapshotPath ? path.relative(process.cwd(), baseline.snapshotPath) : null,
+      remote_snapshot_file: remoteSnapshotFile,
       diff,
     });
   }
@@ -161,10 +237,13 @@ async function main() {
   const payload = {
     changed: changedCount > 0,
     changed_count: changedCount,
+    state_dir: stateDir,
+    remote_snapshots_dir: remoteSnapshotsDir,
     results,
   };
 
   if (outputPath) {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2));
   }
 
@@ -177,11 +256,13 @@ async function main() {
     const lines = ['# GitHub documentation check', ''];
     for (const result of results) {
       const status = result.changed ? 'CHANGED' : 'OK';
-      lines.push(`- ${result.file}: ${status}`);
+      lines.push(`- ${result.file}: ${status} (baseline: ${result.baseline_source})`);
       if (result.changed && result.diff) {
         lines.push(`  - first diff line: ${result.diff.line}`);
-        lines.push(`  - local: ${result.diff.local_line}`);
-        lines.push(`  - remote: ${result.diff.remote_line}`);
+        if (includeDiffSnippets) {
+          lines.push(`  - local: ${result.diff.local_line}`);
+          lines.push(`  - remote: ${result.diff.remote_line}`);
+        }
       }
     }
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
@@ -189,11 +270,13 @@ async function main() {
     const lines = ['GitHub documentation check:'];
     for (const result of results) {
       const status = result.changed ? 'CHANGED' : 'OK';
-      lines.push(`- ${result.file}: ${status}`);
+      lines.push(`- ${result.file}: ${status} (baseline: ${result.baseline_source})`);
       if (result.changed && result.diff) {
         lines.push(`  - first diff line: ${result.diff.line}`);
-        lines.push(`  - local: ${result.diff.local_line}`);
-        lines.push(`  - remote: ${result.diff.remote_line}`);
+        if (includeDiffSnippets) {
+          lines.push(`  - local: ${result.diff.local_line}`);
+          lines.push(`  - remote: ${result.diff.remote_line}`);
+        }
       }
     }
     console.log(lines.join('\n'));

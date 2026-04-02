@@ -133,3 +133,8 @@ temp/
 INTERNAL
 
 docs/planning/
+
+# Docs watch private/runtime artifacts
+docs/github-documentation/docs-check.json
+docs/github-documentation/docs-diff.md
+docs/github-documentation/docs-diff.patch
