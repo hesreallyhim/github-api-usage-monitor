@@ -1,6 +1,6 @@
 # Rate Limit Buckets
 
-The table below represents the 60-minute reset window buckets. The limits are the primary rate limits for authenticated users and PATs - GitHub App installation tokens and Enterprise users may have different limits. Additionally `GITHUB_TOKEN` has a primary rate limit of 1,000 requests per repository per hour.[^1]
+The table below represents the 60-minute reset window buckets. The limits are the primary rate limits for authenticated users and PATs - GitHub App installation tokens and Enterprise users may have different limits. Additionally `GITHUB_TOKEN` has a primary rate limit of 1,000 requests per repository per hour.[^1] The top-level `rate` object is a deprecated alias for `core`.[^2]
 
 | Bucket | Limit per window |
 | --- | --- |
@@ -13,7 +13,7 @@ The table below represents the 60-minute reset window buckets. The limits are th
 | audit_log | 1750 |
 | audit_log_streaming | 15 |
 
-The table below represents the 60-second reset window buckets.
+The table below represents the 60-second reset window buckets. `source_import` is retained as a legacy bucket because older API versions may still expose it even though GitHub now marks it as unused and slated for removal.[^3]
 
 | Bucket | Limit per window |
 | --- | --- |
@@ -25,3 +25,5 @@ The table below represents the 60-second reset window buckets.
 | dependency_sbom | 100 |
 
 [^1] Data is based on current documentation, and is not guaranteed to be stable even within a given API version.
+[^2] GitHub's `GET /rate_limit` docs state that the `rate` object is "closing down" and that new integrations should read `resources.core` instead.
+[^3] GitHub's `GET /rate_limit` docs state that `source_import` is no longer used for any API endpoints and will be removed in the next API version.
