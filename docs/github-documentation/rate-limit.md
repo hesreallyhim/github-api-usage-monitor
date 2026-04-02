@@ -1,7 +1,7 @@
 ---
 markdown-link: https://docs.github.com/en/rest/rate-limit/rate-limit.md
 redirect-link: https://docs.github.com/api/article/body?pathname=/en/rest/rate-limit/rate-limit
-content-sha256: eab796b16a014b82e54bd3bc27e37f3b0ea8fee2ff127c5c3930d0576f7d44d1
+content-sha256: 44eb46956eb56734c3b78eb0d9df796a48030cabff22361034340afe556d210f
 ---
 # Snapshot Metadata Only
 
