@@ -1,5 +1,10 @@
 ![Banner](./docs/assets/banner.svg)
 
+[![CodeQL](https://github.com/hesreallyhim/github-api-usage-monitor/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/hesreallyhim/github-api-usage-monitor/actions/workflows/github-code-scanning/codeql)
+[![Dependabot Updates](https://github.com/hesreallyhim/github-api-usage-monitor/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/hesreallyhim/github-api-usage-monitor/actions/workflows/dependabot/dependabot-updates)
+![GitHub License](https://img.shields.io/github/license/hesreallyhim/github-api-usage-monitor)
+![GitHub Release](https://img.shields.io/github/v/release/hesreallyhim/github-api-usage-monitor)
+
 # github-api-usage-monitor
 
 A GitHub Action that monitors GitHub API usage during a workflow job. It safely polls `/rate_limit` in a background process throughout the job, then renders a per-bucket usage summary in the step summary.
