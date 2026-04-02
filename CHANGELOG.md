@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v1.1.1...v1.2.0) (2026-04-02)
+
+
+### Features
+
+* add docs watch run report output ([4458cca](https://github.com/hesreallyhim/github-api-usage-monitor/commit/4458cca6117b87f718ce78795b9219e26b56e35b))
+
 ## [1.1.1](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v1.1.0...v1.1.1) (2026-02-04)
 
 
