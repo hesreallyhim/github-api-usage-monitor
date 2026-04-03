@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v1.2.0...v2.0.0) (2026-04-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* upgrade to node 24
+
+### Miscellaneous Chores
+
+* upgrade to node 24 ([10c7aab](https://github.com/hesreallyhim/github-api-usage-monitor/commit/10c7aab356907d8429a433cdd99ac4741e57ef23))
+
 ## [1.2.0](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v1.1.1...v1.2.0) (2026-04-02)
 
 
