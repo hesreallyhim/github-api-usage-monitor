@@ -7,13 +7,14 @@ This document defines the supported runtime contract, dependency constraints, an
 
 ## 1. Node.js support contract
 
-- Supported Node.js versions: **>= 20**
-- Action runtime: `runs.using: node20`
-- Development and CI target: **Node 20.x**
+- Supported Node.js versions: **>= 24**
+- Action runtime: `runs.using: node24`
+- Development and CI target: **Node 24.x**
 
 **Rationale**
-- GitHub-hosted runners execute `node20`, which floats across the 20.x line.
+- GitHub-hosted runners execute `node24`, which floats across the 24.x line.
 - We support a major version contract, not a specific patch.
+- A JavaScript action runtime major bump (for example `node20` to `node24`) is treated as a breaking change for release purposes because older GHES or self-hosted environments may not support the newer runtime.
 - Patch-level guarantees are neither tested nor enforced and are therefore not claimed.
 
 **Configuration**
@@ -21,7 +22,7 @@ This document defines the supported runtime contract, dependency constraints, an
 // package.json
 {
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   }
 }
 ```
@@ -33,21 +34,21 @@ This document defines the supported runtime contract, dependency constraints, an
 This repository includes both `.nvmrc` and `.node-version` to support multiple Node version managers and tooling ecosystems.
 
 - Canonical source: `.nvmrc`
-- Accepted value: major only (e.g. `20`)
+- Accepted value: major only (e.g. `24`)
 - Policy: both files must match exactly
 
 ```
 .nvmrc
-20
+24
 
 .node-version
-20
+24
 ```
 
 **Rationale**
 - `nvm` consumes `.nvmrc`.
 - Other tooling (asdf, mise, editors, some CI systems) consumes `.node-version`.
-- Using the major only aligns with the project’s Node support contract (`>=20` / `20.x`).
+- Using the major only aligns with the project’s Node support contract (`>=24` / `24.x`).
 - Keeping both files synchronized prevents environment drift across tools.
 
 **Enforcement**
@@ -105,12 +106,12 @@ engine-strict=true
   - `dist/` verification (`git diff --exit-code -- dist`)
   - Self-test workflow generation verification (`npm run generate:self-test` + diff)
 - Node matrix includes at minimum:
-  - `20.x` (contract baseline; runs unit + integration tests)
+  - `24.x` (contract baseline; runs unit + integration tests)
   - newer majors optionally for early warning (unit tests only)
 
 **Job structure**
-- `node-20` job runs the full suite (unit + integration) because integration tests are expensive.
-- The matrix job (22.x/24.x) runs unit tests only for faster feedback on newer majors.
+- `node-24` job runs the full suite (unit + integration) because integration tests are expensive.
+- The matrix job (24.x/25.x) runs unit tests only for faster feedback on newer majors.
 
 **Rationale**
 - CI guarantees that any commit merged to `main` is buildable, tested, and has up-to-date bundled output.
@@ -170,9 +171,9 @@ Release-As: 1.1.1
 
 ## Summary
 
-- Node support: `>=20`
-- Action runtime: `node20`
-- Dev default: `20.x`
+- Node support: `>=24`
+- Action runtime: `node24`
+- Dev default: `24.x`
 - Dependency enforcement: lockfile + `engine-strict=true`
 - Quality gate: CI + branch protection
 - Releases: Release Please + semantic versioning

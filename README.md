@@ -14,7 +14,7 @@ GitHub Actions workflows may query the GitHub API and consume rate limits, but t
 ## Quick Start
 
 ```yaml
-- uses: hesreallyhim/github-api-usage-monitor@v1
+- uses: hesreallyhim/github-api-usage-monitor@v2
 ```
 
 That's it. Insert that anywhere in your workflow job. The action uses the pre/post hook lifecycle — it starts monitoring automatically before your first step and reports after your last step. No `start`/`stop` steps needed.
@@ -53,7 +53,7 @@ jobs:
   usage-tracker:
     runs-on: ubuntu-latest
     steps:
-      - uses: hesreallyhim/github-api-usage-monitor@v1
+      - uses: hesreallyhim/github-api-usage-monitor@v2
         with:
           diagnostics: true
       # ... The rest of your workflow - calls to GitHub API
