@@ -605,7 +605,7 @@ describe('isValidState - bucket validation', () => {
 
     const stateWithInvalidBucket = makeState({
       buckets: {
-        core: bucketWithoutTimestamp as typeof validBucket,
+        core: bucketWithoutTimestamp,
       },
     });
 

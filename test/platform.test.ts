@@ -39,7 +39,7 @@ describe('detect', () => {
   });
 
   it('returns unknown for unrecognized platform', () => {
-    vi.mocked(os.platform).mockReturnValue('freebsd' as NodeJS.Platform);
+    vi.mocked(os.platform).mockReturnValue('freebsd');
     expect(detect()).toBe('unknown');
   });
 });
@@ -76,7 +76,7 @@ describe('isSupported', () => {
   });
 
   it('returns supported=false for unknown with reason', () => {
-    vi.mocked(os.platform).mockReturnValue('freebsd' as NodeJS.Platform);
+    vi.mocked(os.platform).mockReturnValue('freebsd');
     const info = isSupported();
 
     expect(info.supported).toBe(false);
@@ -106,7 +106,7 @@ describe('assertSupported', () => {
   });
 
   it('throws for unknown platform', () => {
-    vi.mocked(os.platform).mockReturnValue('freebsd' as NodeJS.Platform);
+    vi.mocked(os.platform).mockReturnValue('freebsd');
     expect(() => assertSupported()).toThrow('Unsupported platform');
   });
 });
