@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v2.0.0...v2.0.1) (2026-05-01)
+
+
+### Miscellaneous Chores
+
+* harden workflow configuration ([ee097c2](https://github.com/hesreallyhim/github-api-usage-monitor/commit/ee097c2c6c36393c8234311caa8a5fd224f4e4bb))
+
 ## [2.0.0](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v1.2.0...v2.0.0) (2026-04-03)
 
 
