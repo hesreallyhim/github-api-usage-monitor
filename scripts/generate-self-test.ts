@@ -24,6 +24,9 @@ const realisticWorkflowPath = join(
 );
 const manifestPath = join(__dirname, "self-test-manifest.json");
 const ARTIFACT_PREFIX = "github-api-usage-monitor";
+const CHECKOUT_ACTION = "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2";
+const DOWNLOAD_ARTIFACT_ACTION =
+  "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1";
 const SELF_TEST_SCENARIOS = SCENARIOS.filter((s) => s.suite !== "realistic");
 const REALISTIC_SCENARIOS = SCENARIOS.filter((s) => s.suite === "realistic");
 
@@ -112,7 +115,7 @@ function generateWorkflow(): string {
   lines.push("      fail-fast: false");
   lines.push(...generateMatrixIncludeLines(SELF_TEST_SCENARIOS));
   lines.push("    steps:");
-  lines.push("      - uses: actions/checkout@v4");
+  lines.push(`      - uses: ${CHECKOUT_ACTION}`);
   lines.push("");
   lines.push("      - name: Check scenario enabled");
   lines.push("        id: gate");
@@ -149,7 +152,7 @@ function generateWorkflow(): string {
   lines.push("      fail-fast: false");
   lines.push(...generateMatrixIncludeLines(SELF_TEST_SCENARIOS));
   lines.push("    steps:");
-  lines.push("      - uses: actions/checkout@v4");
+  lines.push(`      - uses: ${CHECKOUT_ACTION}`);
   lines.push("");
   lines.push("      - name: Check scenario enabled");
   lines.push("        id: gate");
@@ -161,7 +164,7 @@ function generateWorkflow(): string {
   lines.push(
     "        if: ${{ steps.gate.outputs.enabled == 'true' && needs.scenario.result != 'skipped' }}"
   );
-  lines.push("        uses: actions/download-artifact@v6");
+  lines.push(`        uses: ${DOWNLOAD_ARTIFACT_ACTION}`);
   lines.push("        with:");
   lines.push(`          name: ${ARTIFACT_PREFIX}-\${{ matrix.id }}`);
   lines.push("          path: ${{ runner.temp }}/github-api-usage-monitor-artifacts/${{ matrix.id }}");
@@ -222,7 +225,7 @@ function generateRealisticWorkflow(): string | null {
   lines.push("      fail-fast: false");
   lines.push(...generateMatrixIncludeLines(REALISTIC_SCENARIOS));
   lines.push("    steps:");
-  lines.push("      - uses: actions/checkout@v4");
+  lines.push(`      - uses: ${CHECKOUT_ACTION}`);
   lines.push("");
   lines.push("      - name: Start monitor");
   lines.push("        id: monitor");
@@ -252,10 +255,10 @@ function generateRealisticWorkflow(): string | null {
   lines.push("      fail-fast: false");
   lines.push(...generateMatrixIncludeLines(REALISTIC_SCENARIOS));
   lines.push("    steps:");
-  lines.push("      - uses: actions/checkout@v4");
+  lines.push(`      - uses: ${CHECKOUT_ACTION}`);
   lines.push("");
   lines.push("      - name: Download diagnostics artifacts");
-  lines.push("        uses: actions/download-artifact@v6");
+  lines.push(`        uses: ${DOWNLOAD_ARTIFACT_ACTION}`);
   lines.push("        with:");
   lines.push(`          name: ${ARTIFACT_PREFIX}-\${{ matrix.id }}`);
   lines.push("          path: ${{ runner.temp }}/github-api-usage-monitor-artifacts/${{ matrix.id }}");
