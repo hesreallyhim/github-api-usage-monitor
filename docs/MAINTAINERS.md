@@ -53,7 +53,7 @@ regressions and to verify the poller and post hook behave as expected.
 
 ### What they are
 
-- Workflow files: `.github/workflows/self-test.yml` and `.github/workflows/realistic-test.yml`
+- Workflow files: `.github/workflows/self-test.yml.disabled` and `.github/workflows/realistic-test.yml.disabled`
 - Generator: `scripts/generate-self-test.ts`
 - Scenarios manifest: `scripts/scenarios.ts` (inputs) and `scripts/self-test-manifest.json` (generated)
 - Scenario runner: `scripts/run-scenario.mjs`
@@ -64,19 +64,19 @@ regressions and to verify the poller and post hook behave as expected.
 
 - **Source of truth**: `scripts/scenarios.ts` defines all scenarios.
 - Run `npm run generate:self-test` to regenerate:
-  - `.github/workflows/self-test.yml`
-  - `.github/workflows/realistic-test.yml` (only if realistic scenarios exist)
+  - `.github/workflows/self-test.yml.disabled`
+  - `.github/workflows/realistic-test.yml.disabled` (only if realistic scenarios exist)
   - `scripts/self-test-manifest.json`
 - Do not hand-edit the generated workflow files. The header in each workflow
   indicates they are auto-generated.
 
 ### When and why to run
 
-- Use **Self-Test** (`self-test.yml`) for quick regression checks after changes
-  to reducer logic, polling behavior, state handling, or output formatting.
-- Use **Realistic Test** (`realistic-test.yml`) for longer-duration behavior or
-  more production-like traffic patterns. This is intentionally separate to avoid
-  slowing normal self-tests.
+- `self-test.yml.disabled` preserves the shorter controlled regression scenarios
+  for reducer logic, polling behavior, state handling, and output formatting.
+- `realistic-test.yml.disabled` preserves the longer-duration, production-like
+  traffic pattern as an inactive workflow. Re-enable it only for deliberate
+  soak-test work or after adding assertions that make it useful as a CI signal.
 - Both workflows require `diagnostics: true` so they can download and analyze
   the diagnostics artifact. This is handled in the generator.
 

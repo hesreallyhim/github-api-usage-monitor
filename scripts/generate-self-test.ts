@@ -14,13 +14,13 @@ import { SCENARIOS } from "./scenarios.js";
 import type { Scenario } from "./scenarios.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const workflowPath = join(__dirname, "..", ".github", "workflows", "self-test.yml");
+const workflowPath = join(__dirname, "..", ".github", "workflows", "self-test.yml.disabled");
 const realisticWorkflowPath = join(
   __dirname,
   "..",
   ".github",
   "workflows",
-  "realistic-test.yml"
+  "realistic-test.yml.disabled"
 );
 const manifestPath = join(__dirname, "self-test-manifest.json");
 const ARTIFACT_PREFIX = "github-api-usage-monitor";

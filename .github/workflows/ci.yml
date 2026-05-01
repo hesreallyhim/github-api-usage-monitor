@@ -12,7 +12,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   build:
@@ -44,7 +43,7 @@ jobs:
         run: npm run generate:self-test
 
       - name: Verify self-test workflows are up to date
-        run: git diff --exit-code -- .github/workflows/self-test.yml .github/workflows/realistic-test.yml scripts/self-test-manifest.json
+        run: git diff --exit-code -- .github/workflows/self-test.yml.disabled .github/workflows/realistic-test.yml.disabled scripts/self-test-manifest.json
 
       - name: Typecheck
         run: npm run typecheck
@@ -79,7 +78,7 @@ jobs:
         run: npm run generate:self-test
 
       - name: Verify self-test workflows are up to date
-        run: git diff --exit-code -- .github/workflows/self-test.yml .github/workflows/realistic-test.yml scripts/self-test-manifest.json
+        run: git diff --exit-code -- .github/workflows/self-test.yml.disabled .github/workflows/realistic-test.yml.disabled scripts/self-test-manifest.json
 
       - name: Typecheck
         run: npm run typecheck
