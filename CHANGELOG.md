@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v2.0.1...v2.0.2) (2026-05-07)
+
+
+### Bug Fixes
+
+* ignore deprecated code scanning upload bucket ([e37b144](https://github.com/hesreallyhim/github-api-usage-monitor/commit/e37b1449867048f1b23ffc7fb96f4d0632387869))
+
 ## [2.0.1](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v2.0.0...v2.0.1) (2026-05-01)
 
 
