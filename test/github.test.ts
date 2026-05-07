@@ -96,7 +96,7 @@ describe('parseRateLimitResponse', () => {
     expect(result?.resources['core']).toBeDefined();
   });
 
-  it('parses response with all known buckets', () => {
+  it('parses response with supported buckets', () => {
     const result = parseRateLimitResponse(allBucketsResponse);
 
     expect(result).not.toBeNull();
@@ -105,7 +105,21 @@ describe('parseRateLimitResponse', () => {
     expect(buckets).toContain('search');
     expect(buckets).toContain('graphql');
     expect(buckets).toContain('integration_manifest');
-    expect(buckets).toContain('code_scanning_upload');
+    expect(buckets).not.toContain('code_scanning_upload');
+  });
+
+  it('preemptively ignores code_scanning_upload before GitHub removes it', () => {
+    const result = parseRateLimitResponse({
+      resources: {
+        core: { limit: 5000, used: 12, remaining: 4988, reset: 1706230800 },
+        code_scanning_upload: { limit: 5000, used: 12, remaining: 4988, reset: 1706230800 },
+      },
+      rate: { limit: 5000, used: 12, remaining: 4988, reset: 1706230800 },
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.resources['core']).toBeDefined();
+    expect(result?.resources['code_scanning_upload']).toBeUndefined();
   });
 
   it('returns null for invalid response', () => {

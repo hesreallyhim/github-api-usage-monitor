@@ -57,7 +57,7 @@ A GitHub Action that monitors API rate-limit usage during a job using pre/post h
 | F3 | must | Accept token input; default to github.token / GITHUB_TOKEN if present | Never print token; use GitHub masking |
 | F4 | must | Poll /rate_limit using adaptive scheduling with a 30s base interval and a debounce floor | Targets pre-reset windows; burst polling near reset boundaries |
 | F5 | must | Persist state and PID to $RUNNER_TEMP for cross-step access | state.json in $RUNNER_TEMP/github-api-usage-monitor; PID at poller.pid |
-| F6 | must | Track all rate-limit buckets returned by /rate_limit API | Report all buckets with usage in summary |
+| F6 | must | Track supported rate-limit buckets returned by /rate_limit API | Report all supported buckets with usage in summary; preemptively ignore GitHub-deprecated alias fields such as `code_scanning_upload`, which may appear before scheduled removal but are documented as accounted under `core` |
 | F7 | must | Handle reset boundaries by including used count immediately after reset change | Minimizes undercount; post-reset used reflects consumption since new window |
 | F8 | must | Detect anomalies when used decreases without reset change | Increment anomaly counter; do not subtract from totals; emit warning |
 | F9 | should | Periodically write state file for durability during long-running polls | Best-effort data preservation on unexpected termination |

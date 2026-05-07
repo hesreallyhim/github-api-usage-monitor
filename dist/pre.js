@@ -31162,6 +31162,20 @@ function isProcessRunning(pid) {
     }
 }
 
+;// CONCATENATED MODULE: ./src/buckets.ts
+/**
+ * Rate-limit bucket policy.
+ *
+ * GitHub deprecated resources.code_scanning_upload and will remove it from
+ * /rate_limit on 2026-05-19. Until then, API responses may still include it,
+ * but code scanning upload usage is documented as accounted under core, so the
+ * deprecated alias is intentionally ignored preemptively.
+ */
+const IGNORED_RATE_LIMIT_BUCKETS = new Set(['code_scanning_upload']);
+function isIgnoredRateLimitBucket(name) {
+    return IGNORED_RATE_LIMIT_BUCKETS.has(name);
+}
+
 ;// CONCATENATED MODULE: ./src/utils.ts
 /**
  * Checks if input is an object and not null.
@@ -31203,6 +31217,7 @@ function utils_sleep(ms) {
  *
  * Fetches rate limit data from the GitHub API.
  */
+
 
 
 // -----------------------------------------------------------------------------
@@ -31339,6 +31354,9 @@ function parseRateLimitResponse(raw) {
     }
     const resources = {};
     for (const [key, value] of Object.entries(raw['resources'])) {
+        if (isIgnoredRateLimitBucket(key)) {
+            continue;
+        }
         if (!isValidSample(value)) {
             continue; // Skip invalid resources instead of failing the entire response
         }
@@ -32078,6 +32096,7 @@ function buildRateLimitErrorEntry(event, pollNumber, timestamp, decision) {
 
 
 
+
 /**
  * Builds a diagnostics poll log entry from reduce results and raw API data.
  * Pure function — testable with zero mocks.
@@ -32085,6 +32104,9 @@ function buildRateLimitErrorEntry(event, pollNumber, timestamp, decision) {
 function buildDiagnosticsEntry(reduceResult, rateLimitData, pollNumber, timestamp) {
     const bucketSnapshots = {};
     for (const [name, update] of Object.entries(reduceResult.updates)) {
+        if (isIgnoredRateLimitBucket(name)) {
+            continue;
+        }
         const sample = rateLimitData.resources[name];
         if (sample) {
             bucketSnapshots[name] = {

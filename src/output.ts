@@ -10,6 +10,7 @@
 
 import * as fs from 'fs';
 import type { SummaryData, ReducerState, BucketState } from './types';
+import { isIgnoredRateLimitBucket } from './buckets';
 
 // -----------------------------------------------------------------------------
 // Port: output.render
@@ -101,7 +102,7 @@ export function renderConsole(data: SummaryData): string {
 
   // One-line summary
   const duration = formatDuration(duration_seconds);
-  const totalUsed = Object.values(state.buckets).reduce((sum, b) => sum + b.total_used, 0);
+  const totalUsed = getReportableBuckets(state).reduce((sum, [, b]) => sum + b.total_used, 0);
   lines.push(`GitHub API Usage: ${totalUsed} requests in ${duration} (${state.poll_count} polls)`);
 
   // Top 3 buckets
@@ -129,7 +130,9 @@ export function renderConsole(data: SummaryData): string {
  * Returns buckets sorted by total_used descending.
  */
 function getSortedBuckets(state: ReducerState): [string, BucketState][] {
-  return Object.entries(state.buckets).sort((a, b) => b[1].total_used - a[1].total_used);
+  return Object.entries(state.buckets)
+    .filter(([name]) => !isIgnoredRateLimitBucket(name))
+    .sort((a, b) => b[1].total_used - a[1].total_used);
 }
 
 /**
@@ -201,13 +204,13 @@ export function generateWarnings(state: ReducerState): string[] {
   }
 
   // Anomalies
-  const totalAnomalies = Object.values(state.buckets).reduce((sum, b) => sum + b.anomalies, 0);
+  const totalAnomalies = getReportableBuckets(state).reduce((sum, [, b]) => sum + b.anomalies, 0);
   if (totalAnomalies > 0) {
     warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset)`);
   }
 
   // Multiple window crosses (only for active buckets — idle buckets rotate windows harmlessly)
-  for (const [name, bucket] of Object.entries(state.buckets)) {
+  for (const [name, bucket] of getReportableBuckets(state)) {
     if (bucket.windows_crossed > 1 && bucket.total_used > 0) {
       warnings.push(
         `${name} window crossed ${bucket.windows_crossed} times; totals are interval-bounded`,
@@ -221,4 +224,8 @@ export function generateWarnings(state: ReducerState): string[] {
   }
 
   return warnings;
+}
+
+function getReportableBuckets(state: ReducerState): [string, BucketState][] {
+  return Object.entries(state.buckets).filter(([name]) => !isIgnoredRateLimitBucket(name));
 }

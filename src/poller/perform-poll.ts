@@ -13,6 +13,7 @@ import type {
   PollLogBucketSnapshot,
 } from '../types';
 import { fetchRateLimit } from '../github';
+import { isIgnoredRateLimitBucket } from '../buckets';
 import { reduce, recordFailure } from '../reducer';
 import type { ReduceResult } from '../reducer';
 import { writeState } from '../state';
@@ -57,6 +58,9 @@ export function buildDiagnosticsEntry(
 ): PollLogEntry {
   const bucketSnapshots: Record<string, PollLogBucketSnapshot> = {};
   for (const [name, update] of Object.entries(reduceResult.updates)) {
+    if (isIgnoredRateLimitBucket(name)) {
+      continue;
+    }
     const sample = rateLimitData.resources[name];
     if (sample) {
       bucketSnapshots[name] = {

@@ -178,6 +178,28 @@ describe('buildDiagnosticsEntry', () => {
     expect(entry.buckets['core'].delta).toBe(1);
     expect(entry.buckets['search'].delta).toBe(2);
   });
+
+  it('omits deprecated code_scanning_upload from diagnostics snapshots', (): void => {
+    const reduceResult: ReduceResult = {
+      state: makeState(),
+      updates: {
+        core: makeUpdate({ delta: 1 }),
+        code_scanning_upload: makeUpdate({ delta: 1 }),
+      },
+    };
+    const rateLimitData: RateLimitResponse = {
+      resources: {
+        core: makeSample({ used: 5 }),
+        code_scanning_upload: makeSample({ used: 5 }),
+      },
+      rate: makeSample(),
+    };
+
+    const entry = buildDiagnosticsEntry(reduceResult, rateLimitData, 4, timestamp);
+
+    expect(entry.buckets).toHaveProperty('core');
+    expect(entry.buckets).not.toHaveProperty('code_scanning_upload');
+  });
 });
 
 // =============================================================================

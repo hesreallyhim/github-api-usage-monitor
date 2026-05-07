@@ -10,6 +10,7 @@
 
 import type { RateLimitResponse, RateLimitSample } from './types';
 import { FETCH_TIMEOUT_MS } from './types';
+import { isIgnoredRateLimitBucket } from './buckets';
 import { isARealObject } from './utils';
 // -----------------------------------------------------------------------------
 // Constants
@@ -190,6 +191,9 @@ export function parseRateLimitResponse(raw: unknown): RateLimitResponse | null {
   const resources: Record<string, RateLimitSample> = {};
 
   for (const [key, value] of Object.entries(raw['resources'])) {
+    if (isIgnoredRateLimitBucket(key)) {
+      continue;
+    }
     if (!isValidSample(value)) {
       continue; // Skip invalid resources instead of failing the entire response
     }

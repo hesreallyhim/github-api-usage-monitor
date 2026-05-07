@@ -69239,6 +69239,28 @@ ZipStream.prototype.finalize = function() {
 
 /***/ }),
 
+/***/ 4140:
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
+
+/* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   o: () => (/* binding */ isIgnoredRateLimitBucket)
+/* harmony export */ });
+/**
+ * Rate-limit bucket policy.
+ *
+ * GitHub deprecated resources.code_scanning_upload and will remove it from
+ * /rate_limit on 2026-05-19. Until then, API responses may still include it,
+ * but code scanning upload usage is documented as accounted under core, so the
+ * deprecated alias is intentionally ignored preemptively.
+ */
+const IGNORED_RATE_LIMIT_BUCKETS = new Set(['code_scanning_upload']);
+function isIgnoredRateLimitBucket(name) {
+    return IGNORED_RATE_LIMIT_BUCKETS.has(name);
+}
+
+
+/***/ }),
+
 /***/ 9248:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
@@ -69246,8 +69268,9 @@ ZipStream.prototype.finalize = function() {
 /* harmony export */   AD: () => (/* binding */ fetchRateLimit)
 /* harmony export */ });
 /* unused harmony exports isValidSample, parseRateLimitResponse */
-/* harmony import */ var _types__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(6141);
-/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(1798);
+/* harmony import */ var _types__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6141);
+/* harmony import */ var _buckets__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(4140);
+/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(1798);
 /**
  * GitHub API Client
  * Layer: infra
@@ -69257,6 +69280,7 @@ ZipStream.prototype.finalize = function() {
  *
  * Fetches rate limit data from the GitHub API.
  */
+
 
 
 // -----------------------------------------------------------------------------
@@ -69274,7 +69298,7 @@ async function fetchRateLimit(token) {
     const timestamp = new Date().toISOString();
     // Set up abort controller with timeout to prevent indefinite hangs
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), _types__WEBPACK_IMPORTED_MODULE_0__/* .FETCH_TIMEOUT_MS */ .MT);
+    const timeoutId = setTimeout(() => controller.abort(), _types__WEBPACK_IMPORTED_MODULE_1__/* .FETCH_TIMEOUT_MS */ .MT);
     try {
         const response = await fetch(RATE_LIMIT_URL, {
             signal: controller.signal,
@@ -69322,7 +69346,7 @@ async function fetchRateLimit(token) {
         if (error.name === 'AbortError') {
             return {
                 success: false,
-                error: `Request timeout: GitHub API did not respond within ${_types__WEBPACK_IMPORTED_MODULE_0__/* .FETCH_TIMEOUT_MS */ .MT}ms`,
+                error: `Request timeout: GitHub API did not respond within ${_types__WEBPACK_IMPORTED_MODULE_1__/* .FETCH_TIMEOUT_MS */ .MT}ms`,
                 timestamp,
             };
         }
@@ -69377,7 +69401,7 @@ function buildRateLimitErrorDetails(response, message) {
  * Used for defensive parsing.
  */
 function isValidSample(sample) {
-    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .isARealObject */ .PU)(sample)) {
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isARealObject */ .PU)(sample)) {
         return false;
     }
     const requiredFields = ['limit', 'used', 'remaining', 'reset'];
@@ -69388,11 +69412,14 @@ function isValidSample(sample) {
  * Returns null if parsing fails.
  */
 function parseRateLimitResponse(raw) {
-    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .isARealObject */ .PU)(raw) || !(0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .isARealObject */ .PU)(raw['resources'])) {
+    if (!(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isARealObject */ .PU)(raw) || !(0,_utils__WEBPACK_IMPORTED_MODULE_2__/* .isARealObject */ .PU)(raw['resources'])) {
         return null;
     }
     const resources = {};
     for (const [key, value] of Object.entries(raw['resources'])) {
+        if ((0,_buckets__WEBPACK_IMPORTED_MODULE_0__/* .isIgnoredRateLimitBucket */ .o)(key)) {
+            continue;
+        }
         if (!isValidSample(value)) {
             continue; // Skip invalid resources instead of failing the entire response
         }
@@ -69424,6 +69451,7 @@ function parseRateLimitResponse(raw) {
 /* unused harmony exports renderMarkdown, renderConsole */
 /* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(9896);
 /* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(fs__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _buckets__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(4140);
 /**
  * Output Renderer
  * Layer: infra
@@ -69433,6 +69461,7 @@ function parseRateLimitResponse(raw) {
  *
  * Generates summary for GitHub step summary and console.
  */
+
 
 /**
  * Renders the summary data to markdown and console formats.
@@ -69497,7 +69526,7 @@ function renderConsole(data) {
     const lines = [];
     // One-line summary
     const duration = formatDuration(duration_seconds);
-    const totalUsed = Object.values(state.buckets).reduce((sum, b) => sum + b.total_used, 0);
+    const totalUsed = getReportableBuckets(state).reduce((sum, [, b]) => sum + b.total_used, 0);
     lines.push(`GitHub API Usage: ${totalUsed} requests in ${duration} (${state.poll_count} polls)`);
     // Top 3 buckets
     const buckets = getSortedBuckets(state).slice(0, 3);
@@ -69520,7 +69549,9 @@ function renderConsole(data) {
  * Returns buckets sorted by total_used descending.
  */
 function getSortedBuckets(state) {
-    return Object.entries(state.buckets).sort((a, b) => b[1].total_used - a[1].total_used);
+    return Object.entries(state.buckets)
+        .filter(([name]) => !(0,_buckets__WEBPACK_IMPORTED_MODULE_1__/* .isIgnoredRateLimitBucket */ .o)(name))
+        .sort((a, b) => b[1].total_used - a[1].total_used);
 }
 /**
  * Returns only buckets with actual usage (total_used > 0), sorted by total_used descending.
@@ -69582,12 +69613,12 @@ function generateWarnings(state) {
         warnings.push(`Secondary rate limit warning response was received${suffix}`);
     }
     // Anomalies
-    const totalAnomalies = Object.values(state.buckets).reduce((sum, b) => sum + b.anomalies, 0);
+    const totalAnomalies = getReportableBuckets(state).reduce((sum, [, b]) => sum + b.anomalies, 0);
     if (totalAnomalies > 0) {
         warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset)`);
     }
     // Multiple window crosses (only for active buckets — idle buckets rotate windows harmlessly)
-    for (const [name, bucket] of Object.entries(state.buckets)) {
+    for (const [name, bucket] of getReportableBuckets(state)) {
         if (bucket.windows_crossed > 1 && bucket.total_used > 0) {
             warnings.push(`${name} window crossed ${bucket.windows_crossed} times; totals are interval-bounded`);
         }
@@ -69597,6 +69628,9 @@ function generateWarnings(state) {
         warnings.push(`Last error: ${state.last_error}`);
     }
     return warnings;
+}
+function getReportableBuckets(state) {
+    return Object.entries(state.buckets).filter(([name]) => !(0,_buckets__WEBPACK_IMPORTED_MODULE_1__/* .isIgnoredRateLimitBucket */ .o)(name));
 }
 
 
@@ -69999,6 +70033,8 @@ function isProcessRunning(pid) {
 
 // EXTERNAL MODULE: ./src/github.ts
 var github = __nccwpck_require__(9248);
+// EXTERNAL MODULE: ./src/buckets.ts
+var buckets = __nccwpck_require__(4140);
 // EXTERNAL MODULE: ./src/reducer.ts
 var reducer = __nccwpck_require__(4807);
 // EXTERNAL MODULE: ./src/state.ts
@@ -70138,6 +70174,7 @@ function buildRateLimitErrorEntry(event, pollNumber, timestamp, decision) {
 
 
 
+
 /**
  * Builds a diagnostics poll log entry from reduce results and raw API data.
  * Pure function — testable with zero mocks.
@@ -70145,6 +70182,9 @@ function buildRateLimitErrorEntry(event, pollNumber, timestamp, decision) {
 function buildDiagnosticsEntry(reduceResult, rateLimitData, pollNumber, timestamp) {
     const bucketSnapshots = {};
     for (const [name, update] of Object.entries(reduceResult.updates)) {
+        if ((0,buckets/* isIgnoredRateLimitBucket */.o)(name)) {
+            continue;
+        }
         const sample = rateLimitData.resources[name];
         if (sample) {
             bucketSnapshots[name] = {
@@ -70413,11 +70453,11 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 /* harmony import */ var _poller__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(8633);
 /* harmony import */ var _state__WEBPACK_IMPORTED_MODULE_6__ = __nccwpck_require__(2462);
 /* harmony import */ var _reducer__WEBPACK_IMPORTED_MODULE_12__ = __nccwpck_require__(4807);
-/* harmony import */ var _github__WEBPACK_IMPORTED_MODULE_11__ = __nccwpck_require__(9248);
-/* harmony import */ var _output__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(6202);
-/* harmony import */ var _poll_log__WEBPACK_IMPORTED_MODULE_8__ = __nccwpck_require__(2233);
-/* harmony import */ var _paths__WEBPACK_IMPORTED_MODULE_9__ = __nccwpck_require__(8431);
-/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_10__ = __nccwpck_require__(1798);
+/* harmony import */ var _github__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(9248);
+/* harmony import */ var _output__WEBPACK_IMPORTED_MODULE_8__ = __nccwpck_require__(6202);
+/* harmony import */ var _poll_log__WEBPACK_IMPORTED_MODULE_9__ = __nccwpck_require__(2233);
+/* harmony import */ var _paths__WEBPACK_IMPORTED_MODULE_10__ = __nccwpck_require__(8431);
+/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_11__ = __nccwpck_require__(1798);
 /**
  * Post Entry
  * Layer: action
@@ -70449,7 +70489,7 @@ __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __we
 const ARTIFACT_PREFIX = 'github-api-usage-monitor';
 const POLL_LOG_JSON_NAME = 'poll-log.json';
 function isDiagnosticsEnabled() {
-    return (0,_utils__WEBPACK_IMPORTED_MODULE_10__/* .parseBooleanFlag */ ._p)(_actions_core__WEBPACK_IMPORTED_MODULE_0__/* .getInput */ .V4('diagnostics'));
+    return (0,_utils__WEBPACK_IMPORTED_MODULE_11__/* .parseBooleanFlag */ ._p)(_actions_core__WEBPACK_IMPORTED_MODULE_0__/* .getInput */ .V4('diagnostics'));
 }
 function getArtifactName() {
     const custom = _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .getInput */ .V4('artifact_name');
@@ -70461,9 +70501,9 @@ function getArtifactName() {
 async function uploadDiagnosticsArtifact(payload) {
     const artifactName = getArtifactName();
     try {
-        const stateDir = (0,_paths__WEBPACK_IMPORTED_MODULE_9__/* .getStateDir */ .hj)();
+        const stateDir = (0,_paths__WEBPACK_IMPORTED_MODULE_10__/* .getStateDir */ .hj)();
         fs__WEBPACK_IMPORTED_MODULE_2__.mkdirSync(stateDir, { recursive: true });
-        const statePath = (0,_paths__WEBPACK_IMPORTED_MODULE_9__/* .getStatePath */ .Dy)();
+        const statePath = (0,_paths__WEBPACK_IMPORTED_MODULE_10__/* .getStatePath */ .Dy)();
         if (!fs__WEBPACK_IMPORTED_MODULE_2__.existsSync(statePath)) {
             fs__WEBPACK_IMPORTED_MODULE_2__.writeFileSync(statePath, payload.stateJson, 'utf-8');
         }
@@ -70549,10 +70589,10 @@ async function handlePost() {
         warnings.push('No PID file found (monitor may not have started)');
     }
     // Read final state
-    const statePath = (0,_paths__WEBPACK_IMPORTED_MODULE_9__/* .getStatePath */ .Dy)();
+    const statePath = (0,_paths__WEBPACK_IMPORTED_MODULE_10__/* .getStatePath */ .Dy)();
     _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`State path: ${statePath}`);
     if (diagnosticsEnabled) {
-        const pollLogPath = (0,_paths__WEBPACK_IMPORTED_MODULE_9__/* .getPollLogPath */ .Rv)();
+        const pollLogPath = (0,_paths__WEBPACK_IMPORTED_MODULE_10__/* .getPollLogPath */ .Rv)();
         _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(`Poll log path: ${pollLogPath}`);
     }
     else {
@@ -70563,7 +70603,7 @@ async function handlePost() {
         if (stateResult.notFound) {
             _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .warning */ .$e('No state file found. Monitor may not have started or state was lost.');
             if (diagnosticsEnabled) {
-                const pollLog = (0,_poll_log__WEBPACK_IMPORTED_MODULE_8__/* .readPollLog */ .Y)();
+                const pollLog = (0,_poll_log__WEBPACK_IMPORTED_MODULE_9__/* .readPollLog */ .Y)();
                 const emptyState = {};
                 const stateJson = JSON.stringify(emptyState);
                 const pollLogJson = JSON.stringify(pollLog);
@@ -70584,7 +70624,7 @@ async function handlePost() {
     let finalState = stateResult.state;
     if (token) {
         _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq('Performing final API poll...');
-        const finalPoll = await (0,_github__WEBPACK_IMPORTED_MODULE_11__/* .fetchRateLimit */ .AD)(token);
+        const finalPoll = await (0,_github__WEBPACK_IMPORTED_MODULE_7__/* .fetchRateLimit */ .AD)(token);
         if (finalPoll.success) {
             const reduceResult = (0,_reducer__WEBPACK_IMPORTED_MODULE_12__/* .reduce */ .TS)(finalState, finalPoll.data, finalPoll.timestamp);
             finalState = reduceResult.state;
@@ -70616,10 +70656,10 @@ async function handlePost() {
         : Date.now();
     const durationSeconds = Math.max(0, Math.floor((endTime - startTime) / 1000));
     // Generate state-based warnings
-    const stateWarnings = (0,_output__WEBPACK_IMPORTED_MODULE_7__/* .generateWarnings */ .Lq)(finalState);
+    const stateWarnings = (0,_output__WEBPACK_IMPORTED_MODULE_8__/* .generateWarnings */ .Lq)(finalState);
     warnings.push(...stateWarnings);
     if (diagnosticsEnabled) {
-        const pollLog = (0,_poll_log__WEBPACK_IMPORTED_MODULE_8__/* .readPollLog */ .Y)();
+        const pollLog = (0,_poll_log__WEBPACK_IMPORTED_MODULE_9__/* .readPollLog */ .Y)();
         const stateJson = JSON.stringify(finalState);
         const pollLogJson = JSON.stringify(pollLog);
         const uploadResult = await uploadDiagnosticsArtifact({ stateJson, pollLogJson });
@@ -70637,10 +70677,10 @@ async function handlePost() {
         duration_seconds: durationSeconds,
         warnings,
     };
-    const { markdown, console: consoleText } = (0,_output__WEBPACK_IMPORTED_MODULE_7__/* .render */ .XX)(summaryData);
+    const { markdown, console: consoleText } = (0,_output__WEBPACK_IMPORTED_MODULE_8__/* .render */ .XX)(summaryData);
     // Output
     _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq(consoleText);
-    (0,_output__WEBPACK_IMPORTED_MODULE_7__/* .writeStepSummary */ .oG)(markdown);
+    (0,_output__WEBPACK_IMPORTED_MODULE_8__/* .writeStepSummary */ .oG)(markdown);
     _actions_core__WEBPACK_IMPORTED_MODULE_0__/* .info */ .pq('Monitor stopped');
 }
 // -----------------------------------------------------------------------------

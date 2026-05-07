@@ -26,6 +26,7 @@ const scenarioName = process.env.SCENARIO_NAME || 'unknown';
 const stateJsonEnv = process.env.STATE_JSON || '';
 const pollLogJsonEnv = process.env.POLL_LOG_JSON || '';
 const stateDir = process.env.STATE_DIR || '';
+const ignoredRateLimitBuckets = new Set(['code_scanning_upload']);
 
 // ---------------------------------------------------------------------------
 // Read inputs
@@ -108,6 +109,10 @@ function formatResetEpoch(epoch) {
   return new Date(epoch * 1000).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
 }
 
+function isIgnoredRateLimitBucket(name) {
+  return ignoredRateLimitBuckets.has(name);
+}
+
 // ---------------------------------------------------------------------------
 // Render bucket summary table
 // ---------------------------------------------------------------------------
@@ -120,6 +125,7 @@ function renderBucketSummary(state) {
   lines.push('|--------|------------:|----------:|-----------:|-----------------:|---------------:|:--------------:|');
 
   const bucketEntries = Object.entries(state.buckets)
+    .filter(([name]) => !isIgnoredRateLimitBucket(name))
     .filter(([, b]) => b.total_used > 0 || b.windows_crossed > 0)
     .sort((a, b) => b[1].total_used - a[1].total_used);
 
@@ -164,9 +170,9 @@ function renderPollTimeline(pollLog) {
       dt = ((ts - prevTs) / 1000).toFixed(1) + 's';
     }
 
-    const bucketEntries = Object.entries(entry.buckets).sort(([a], [b]) =>
-      a.localeCompare(b)
-    );
+    const bucketEntries = Object.entries(entry.buckets)
+      .filter(([name]) => !isIgnoredRateLimitBucket(name))
+      .sort(([a], [b]) => a.localeCompare(b));
 
     if (bucketEntries.length === 0) {
       lines.push(`| ${entry.poll_number} | ${time} | ${dt} | *(empty)* | | | | |`);
@@ -209,6 +215,9 @@ function renderWindowCrossings(pollLog) {
   for (let i = 0; i < pollLog.length; i++) {
     const entry = pollLog[i];
     for (const [name, snap] of Object.entries(entry.buckets)) {
+      if (isIgnoredRateLimitBucket(name)) {
+        continue;
+      }
       if (snap.window_crossed) {
         // Find previous poll's values for this bucket
         let prevSnap = null;

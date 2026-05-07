@@ -197,7 +197,7 @@ describe('renderMarkdown', () => {
           search: activeBucket,
           graphql: activeBucket,
           // These 10 idle buckets should NOT appear in the table
-          code_scanning_upload: idleBucket,
+          audit_log_streaming: idleBucket,
           actions_runner_registration: idleBucket,
           scim: idleBucket,
           dependency_snapshots: idleBucket,
@@ -220,6 +220,43 @@ describe('renderMarkdown', () => {
     expect(markdown).not.toContain('scim');
     expect(markdown).not.toContain('audit_log');
     expect(markdown).not.toContain('packages');
+  });
+
+  it('does not show deprecated code_scanning_upload even if stale state contains usage', () => {
+    const baseBucket = {
+      last_reset: 1706230800,
+      windows_crossed: 0,
+      anomalies: 0,
+      last_seen_ts: 'ts',
+      limit: 5000,
+    };
+    const data = makeSummaryData({
+      state: makeState({
+        buckets: {
+          core: {
+            ...baseBucket,
+            last_used: 10,
+            total_used: 10,
+            remaining: 4990,
+          },
+          code_scanning_upload: {
+            ...baseBucket,
+            last_used: 100,
+            total_used: 100,
+            remaining: 4900,
+          },
+        },
+      }),
+    });
+
+    const markdown = renderMarkdown(data);
+    const consoleText = renderConsole(data);
+
+    expect(markdown).toContain('core');
+    expect(markdown).not.toContain('code_scanning_upload');
+    expect(consoleText).toContain('10 requests');
+    expect(consoleText).toContain('core');
+    expect(consoleText).not.toContain('code_scanning_upload');
   });
 
   it('shows no-usage message when all buckets are idle', () => {
@@ -388,7 +425,7 @@ describe('generateWarnings', () => {
   it('does NOT warn about window crosses on idle buckets (total_used = 0)', () => {
     const state = makeState({
       buckets: {
-        code_scanning_upload: {
+        packages: {
           last_reset: 1706230800,
           last_used: 0,
           total_used: 0,

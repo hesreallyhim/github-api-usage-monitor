@@ -82,8 +82,8 @@
       {
         "id": "F6",
         "priority": "must",
-        "statement": "Track all rate-limit buckets returned by /rate_limit API",
-        "notes": "Report all buckets with usage in summary"
+        "statement": "Track supported rate-limit buckets returned by /rate_limit API",
+        "notes": "Report all supported buckets with usage in summary; preemptively ignore GitHub-deprecated alias fields such as code_scanning_upload, which may appear before scheduled removal but are documented as accounted under core"
       },
       {
         "id": "F7",
