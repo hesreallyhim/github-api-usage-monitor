@@ -25524,7 +25524,7 @@ module.exports = baseIndexOf;
 
 /***/ }),
 
-/***/ 3605:
+/***/ 5986:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var baseGetTag = __nccwpck_require__(9117),
@@ -27353,7 +27353,7 @@ module.exports = identity;
 /***/ 541:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
-var baseIsArguments = __nccwpck_require__(3605),
+var baseIsArguments = __nccwpck_require__(5986),
     isObjectLike = __nccwpck_require__(1645);
 
 /** Used for built-in method references. */
@@ -45142,6 +45142,9 @@ const EMPTY_BUF = Buffer.alloc(0)
 const FastBuffer = Buffer[Symbol.species]
 const addListener = util.addListener
 const removeAllListeners = util.removeAllListeners
+const kIdleSocketValidation = Symbol('kIdleSocketValidation')
+const kIdleSocketValidationTimeout = Symbol('kIdleSocketValidationTimeout')
+const kSocketUsed = Symbol('kSocketUsed')
 
 let extractBody
 
@@ -45456,6 +45459,11 @@ class Parser {
       return -1
     }
 
+    if (client[kRunning] === 0) {
+      util.destroy(socket, new SocketError('bad response', util.getSocketInfo(socket)))
+      return -1
+    }
+
     const request = client[kQueue][client[kRunningIdx]]
     if (!request) {
       return -1
@@ -45556,6 +45564,11 @@ class Parser {
 
     /* istanbul ignore next: difficult to make a test case for */
     if (socket.destroyed) {
+      return -1
+    }
+
+    if (client[kRunning] === 0) {
+      util.destroy(socket, new SocketError('bad response', util.getSocketInfo(socket)))
       return -1
     }
 
@@ -45732,6 +45745,7 @@ class Parser {
     request.onComplete(headers)
 
     client[kQueue][client[kRunningIdx]++] = null
+    socket[kSocketUsed] = true
 
     if (socket[kWriting]) {
       assert(client[kRunning] === 0)
@@ -45790,6 +45804,9 @@ async function connectH1 (client, socket) {
   socket[kWriting] = false
   socket[kReset] = false
   socket[kBlocking] = false
+  socket[kIdleSocketValidation] = 0
+  socket[kIdleSocketValidationTimeout] = null
+  socket[kSocketUsed] = false
   socket[kParser] = new Parser(client, socket, llhttpInstance)
 
   addListener(socket, 'error', function (err) {
@@ -45835,6 +45852,8 @@ async function connectH1 (client, socket) {
   addListener(socket, 'close', function () {
     const client = this[kClient]
     const parser = this[kParser]
+
+    clearIdleSocketValidation(this)
 
     if (parser) {
       if (!this[kError] && parser.statusCode && !parser.shouldKeepAlive) {
@@ -45901,7 +45920,7 @@ async function connectH1 (client, socket) {
       return socket.destroyed
     },
     busy (request) {
-      if (socket[kWriting] || socket[kReset] || socket[kBlocking]) {
+      if (socket[kWriting] || socket[kReset] || socket[kBlocking] || socket[kIdleSocketValidation] === 1) {
         return true
       }
 
@@ -45939,6 +45958,31 @@ async function connectH1 (client, socket) {
   }
 }
 
+function clearIdleSocketValidation (socket) {
+  if (socket[kIdleSocketValidationTimeout]) {
+    clearTimeout(socket[kIdleSocketValidationTimeout])
+    socket[kIdleSocketValidationTimeout] = null
+  }
+
+  socket[kIdleSocketValidation] = 0
+}
+
+function scheduleIdleSocketValidation (client, socket) {
+  socket[kIdleSocketValidation] = 1
+  socket[kIdleSocketValidationTimeout] = setTimeout(() => {
+    socket[kIdleSocketValidationTimeout] = null
+    socket[kIdleSocketValidation] = 2
+
+    if (client[kSocket] === socket && !socket.destroyed) {
+      client[kResume]()
+    }
+  }, 0)
+  socket[kIdleSocketValidationTimeout].unref?.()
+}
+
+/**
+ * @param {import('./client.js')} client
+ */
 function resumeH1 (client) {
   const socket = client[kSocket]
 
@@ -45951,6 +45995,32 @@ function resumeH1 (client) {
     } else if (socket[kNoRef] && socket.ref) {
       socket.ref()
       socket[kNoRef] = false
+    }
+
+    if (client[kRunning] === 0 && client[kPending] > 0 && socket[kSocketUsed]) {
+      if (socket[kIdleSocketValidation] === 0) {
+        scheduleIdleSocketValidation(client, socket)
+        socket[kParser].readMore()
+        if (socket.destroyed) {
+          return
+        }
+        return
+      }
+
+      if (socket[kIdleSocketValidation] === 1) {
+        socket[kParser].readMore()
+        if (socket.destroyed) {
+          return
+        }
+        return
+      }
+    }
+
+    if (client[kRunning] === 0) {
+      socket[kParser].readMore()
+      if (socket.destroyed) {
+        return
+      }
     }
 
     if (client[kSize] === 0) {
@@ -46046,6 +46116,7 @@ function writeH1 (client, request) {
   }
 
   const socket = client[kSocket]
+  clearIdleSocketValidation(socket)
 
   const abort = (err) => {
     if (request.aborted || request.completed) {
@@ -47915,6 +47986,7 @@ class DispatcherBase extends Dispatcher {
 
   get webSocketOptions () {
     return {
+      maxFragments: this[kWebSocketOptions].maxFragments ?? 131072,
       maxPayloadSize: this[kWebSocketOptions].maxPayloadSize ?? 128 * 1024 * 1024
     }
   }
@@ -53814,32 +53886,25 @@ function parseUnparsedAttributes (unparsedAttributes, cookieAttributeList = {}) 
     // If the attribute-name case-insensitively matches the string
     // "SameSite", the user agent MUST process the cookie-av as follows:
 
-    // 1. Let enforcement be "Default".
-    let enforcement = 'Default'
-
     const attributeValueLowercase = attributeValue.toLowerCase()
-    // 2. If cookie-av's attribute-value is a case-insensitive match for
-    //    "None", set enforcement to "None".
-    if (attributeValueLowercase.includes('none')) {
-      enforcement = 'None'
-    }
 
-    // 3. If cookie-av's attribute-value is a case-insensitive match for
-    //    "Strict", set enforcement to "Strict".
-    if (attributeValueLowercase.includes('strict')) {
-      enforcement = 'Strict'
+    // 1. If cookie-av's attribute-value is a case-insensitive match for
+    //    "None", append an attribute to the cookie-attribute-list with an
+    //    attribute-name of "SameSite" and an attribute-value of "None".
+    if (attributeValueLowercase === 'none') {
+      cookieAttributeList.sameSite = 'None'
+    } else if (attributeValueLowercase === 'strict') {
+      // 2. If cookie-av's attribute-value is a case-insensitive match for
+      //    "Strict", append an attribute to the cookie-attribute-list with
+      //    an attribute-name of "SameSite" and an attribute-value of
+      //    "Strict".
+      cookieAttributeList.sameSite = 'Strict'
+    } else if (attributeValueLowercase === 'lax') {
+      // 3. If cookie-av's attribute-value is a case-insensitive match for
+      //    "Lax", append an attribute to the cookie-attribute-list with an
+      //    attribute-name of "SameSite" and an attribute-value of "Lax".
+      cookieAttributeList.sameSite = 'Lax'
     }
-
-    // 4. If cookie-av's attribute-value is a case-insensitive match for
-    //    "Lax", set enforcement to "Lax".
-    if (attributeValueLowercase.includes('lax')) {
-      enforcement = 'Lax'
-    }
-
-    // 5. Append an attribute to the cookie-attribute-list with an
-    //    attribute-name of "SameSite" and an attribute-value of
-    //    enforcement.
-    cookieAttributeList.sameSite = enforcement
   } else {
     cookieAttributeList.unparsed ??= []
 
@@ -66635,6 +66700,11 @@ const { closeWebSocketConnection } = __nccwpck_require__(6897)
 const { PerMessageDeflate } = __nccwpck_require__(9469)
 const { MessageSizeExceededError } = __nccwpck_require__(8707)
 
+function failWebsocketConnectionWithCode (ws, code, reason) {
+  closeWebSocketConnection(ws, code, reason, Buffer.byteLength(reason))
+  failWebsocketConnection(ws, reason)
+}
+
 // This code was influenced by ws released under the MIT license.
 // Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
 // Copyright (c) 2013 Arnout Kazemier and contributors
@@ -66655,18 +66725,22 @@ class ByteParser extends Writable {
   #extensions
 
   /** @type {number} */
+  #maxFragments
+
+  /** @type {number} */
   #maxPayloadSize
 
   /**
    * @param {import('./websocket').WebSocket} ws
    * @param {Map<string, string>|null} extensions
-   * @param {{ maxPayloadSize?: number }} [options]
+   * @param {{ maxFragments?: number, maxPayloadSize?: number }} [options]
    */
   constructor (ws, extensions, options = {}) {
     super()
 
     this.ws = ws
     this.#extensions = extensions == null ? new Map() : extensions
+    this.#maxFragments = options.maxFragments ?? 0
     this.#maxPayloadSize = options.maxPayloadSize ?? 0
 
     if (this.#extensions.has('permessage-deflate')) {
@@ -66690,9 +66764,9 @@ class ByteParser extends Writable {
     if (
       this.#maxPayloadSize > 0 &&
       !isControlFrame(this.#info.opcode) &&
-      this.#info.payloadLength > this.#maxPayloadSize
+      this.#info.payloadLength + this.#fragmentsBytes > this.#maxPayloadSize
     ) {
-      failWebsocketConnection(this.ws, 'Payload size exceeds maximum allowed size')
+      failWebsocketConnectionWithCode(this.ws, 1009, 'Payload size exceeds maximum allowed size')
       return false
     }
 
@@ -66857,10 +66931,12 @@ class ByteParser extends Writable {
           this.#state = parserStates.INFO
         } else {
           if (!this.#info.compressed) {
-            this.writeFragments(body)
+            if (!this.writeFragments(body)) {
+              return
+            }
 
             if (this.#maxPayloadSize > 0 && this.#fragmentsBytes > this.#maxPayloadSize) {
-              failWebsocketConnection(this.ws, new MessageSizeExceededError().message)
+              failWebsocketConnectionWithCode(this.ws, 1009, new MessageSizeExceededError().message)
               return
             }
 
@@ -66879,14 +66955,17 @@ class ByteParser extends Writable {
               this.#info.fin,
               (error, data) => {
                 if (error) {
-                  failWebsocketConnection(this.ws, error.message)
+                  const code = error instanceof MessageSizeExceededError ? 1009 : 1007
+                  failWebsocketConnectionWithCode(this.ws, code, error.message)
                   return
                 }
 
-                this.writeFragments(data)
+                if (!this.writeFragments(data)) {
+                  return
+                }
 
                 if (this.#maxPayloadSize > 0 && this.#fragmentsBytes > this.#maxPayloadSize) {
-                  failWebsocketConnection(this.ws, new MessageSizeExceededError().message)
+                  failWebsocketConnectionWithCode(this.ws, 1009, new MessageSizeExceededError().message)
                   return
                 }
 
@@ -66956,8 +67035,17 @@ class ByteParser extends Writable {
   }
 
   writeFragments (fragment) {
+    if (
+      this.#maxFragments > 0 &&
+      this.#fragments.length === this.#maxFragments
+    ) {
+      failWebsocketConnectionWithCode(this.ws, 1008, 'Too many message fragments')
+      return false
+    }
+
     this.#fragmentsBytes += fragment.length
     this.#fragments.push(fragment)
+    return true
   }
 
   consumeFragments () {
@@ -68006,9 +68094,12 @@ class WebSocket extends EventTarget {
     // once this happens, the connection is open
     this[kResponse] = response
 
-    const maxPayloadSize = this[kController]?.dispatcher?.webSocketOptions?.maxPayloadSize
+    const webSocketOptions = this[kController]?.dispatcher?.webSocketOptions
+    const maxFragments = webSocketOptions?.maxFragments
+    const maxPayloadSize = webSocketOptions?.maxPayloadSize
 
     const parser = new ByteParser(this, parsedExtensions, {
+      maxFragments,
       maxPayloadSize
     })
     parser.on('drain', onParserDrain)
@@ -70625,7 +70716,7 @@ async function main() {
 
 __nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
 /* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(3894);
-/* harmony import */ var _actions_artifact__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(4205);
+/* harmony import */ var _actions_artifact__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(3605);
 /* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(9896);
 /* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__nccwpck_require__.n(fs__WEBPACK_IMPORTED_MODULE_2__);
 /* harmony import */ var path__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(6928);
@@ -80336,7 +80427,7 @@ module.exports = index;
 
 /***/ }),
 
-/***/ 4205:
+/***/ 3605:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -93810,7 +93901,8 @@ const OptionsBuilder_defaultOptions = {
   numberParseOptions: {
     hex: true,
     leadingZeros: true,
-    eNotation: true
+    eNotation: true,
+    unicode: false
   },
   tagValueProcessor: function (tagName, val) {
     return val;
@@ -96861,9 +96953,1060 @@ class EntityDecoder {
     return this._applyNCRAction(effective, token, cp);
   }
 }
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/html.js
+/**
+ * HTML context patterns.
+ *
+ * Detects XSS vectors that are dangerous when a string ends up rendered as HTML.
+ * All patterns use bounded quantifiers to ensure linear-time matching (ReDoS-safe).
+ *
+ * Each entry is { pattern: RegExp, id: string, description: string }
+ * so callers can inspect which rule fired if they need to.
+ */
+
+const HTML_PATTERNS = [
+  {
+    id: 'html-script-open',
+    description: '<script opening tag',
+    pattern: /<script[\s>/]/i,
+  },
+  {
+    id: 'html-script-close',
+    description: '</script closing tag',
+    pattern: /<\/script[\s>]/i,
+  },
+  {
+    id: 'html-javascript-protocol',
+    description: 'javascript: URI scheme (with optional whitespace/encoding)',
+    // Handles j&#x61;vascript:, j\u0061vascript:, and whitespace variants
+    pattern: /j[\t\n\r ]*a[\t\n\r ]*v[\t\n\r ]*a[\t\n\r ]*s[\t\n\r ]*c[\t\n\r ]*r[\t\n\r ]*i[\t\n\r ]*p[\t\n\r ]*t[\t\n\r ]*:/i,
+  },
+  {
+    id: 'html-vbscript-protocol',
+    description: 'vbscript: URI scheme',
+    pattern: /vbscript[\t\n\r ]*:/i,
+  },
+  {
+    id: 'html-data-html',
+    description: 'data:text/html URI — can execute scripts in browsers',
+    pattern: /data[\t\n\r ]*:[\t\n\r ]*text\/html/i,
+  },
+  {
+    id: 'html-data-xhtml',
+    description: 'data:application/xhtml+xml URI',
+    pattern: /data[\t\n\r ]*:[\t\n\r ]*application\/xhtml/i,
+  },
+  {
+    id: 'html-data-svg',
+    description: 'data:image/svg+xml URI — can execute scripts',
+    pattern: /data[\t\n\r ]*:[\t\n\r ]*image\/svg\+xml/i,
+  },
+  {
+    id: 'html-inline-event-handler',
+    description: 'Inline event handler attributes: onclick=, onerror=, onload=, etc.',
+    // \bon ensures we match a word boundary so "phonetic=" is not caught
+    pattern: /\bon\w{1,30}\s*=/i,
+  },
+  {
+    id: 'html-entity-obfuscated-script',
+    description: 'HTML-entity-encoded <script (e.g. &#x3C;script or &lt;script)',
+    // Entities include optional trailing semicolon: &#x3C; or &#x3C (both valid in HTML5)
+    pattern: /(?:&#x0*3[Cc];?|&#0*60;?|&lt;)\s*script/i,
+  },
+  {
+    id: 'html-entity-obfuscated-javascript',
+    description: 'HTML-entity-encoded javascript: (partial — catches common &#106; or &#x6a; for "j")',
+    pattern: /(?:&#x0*6[Aa];?|&#0*106;?)\s*(?:&#x0*61;?|a)[\s\S]{0,80}script\s*:/i,
+  },
+  {
+    id: 'html-style-expression',
+    description: 'CSS expression() — IE-era code execution in style attributes',
+    pattern: /style[\s\S]{0,20}expression\s*\(/i,
+  },
+  {
+    id: 'html-object-embed',
+    description: '<object or <embed tags that can load active content',
+    pattern: /<(?:object|embed)[\s>/]/i,
+  },
+  {
+    id: 'html-base-tag',
+    description: '<base href= — can hijack all relative URLs on a page',
+    pattern: /<base[\s>]/i,
+  },
+  {
+    id: 'html-meta-refresh',
+    description: '<meta http-equiv="refresh" — can redirect users',
+    pattern: /<meta[\s\S]{0,40}http-equiv[\s\S]{0,20}refresh/i,
+  },
+  {
+    id: 'html-srcdoc',
+    description: 'srcdoc= attribute on iframes — embeds HTML that can run scripts',
+    pattern: /srcdoc\s*=/i,
+  },
+  {
+    id: 'html-iframe',
+    description: '<iframe tag',
+    pattern: /<iframe[\s>/]/i,
+  },
+  {
+    id: 'html-form',
+    description: '<form tag — can be used for phishing / credential harvesting injection',
+    pattern: /<form[\s>/]/i,
+  },
+];
+
+/* harmony default export */ const html = (HTML_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/xml.js
+/**
+ * XML context patterns.
+ *
+ * Detects injection vectors that are specifically dangerous when a string
+ * is inserted into an XML document (not HTML rendering context).
+ *
+ * Key distinction from HTML: these patterns target parser-level attacks —
+ * things that can confuse or subvert an XML parser, trigger external entity
+ * resolution, or inject DTD content. HTML rendering concerns (XSS) belong
+ * in the HTML context.
+ */
+
+const XML_PATTERNS = [
+  {
+    id: 'xml-cdata-injection',
+    description: 'CDATA section injection: <![CDATA[ breaks out of text node context',
+    pattern: /<!\[CDATA\[/i,
+  },
+  {
+    id: 'xml-cdata-close',
+    description: 'CDATA close sequence: ]]> can terminate an enclosing CDATA section',
+    pattern: /\]\]>/,
+  },
+  {
+    id: 'xml-processing-instruction',
+    description: 'XML processing instruction: <?xml-stylesheet or <?php etc.',
+    pattern: /<\?(?:xml[\- ]|php|asp)/i,
+  },
+  {
+    id: 'xml-doctype-injection',
+    description: 'DOCTYPE declaration embedded in content — can define entities',
+    // Match <!DOCTYPE followed by end-of-string, whitespace, or [ (internal subset)
+    pattern: /<!DOCTYPE(?:[\s[]|$)/i,
+  },
+  {
+    id: 'xml-entity-system',
+    description: 'SYSTEM keyword — used in external entity declarations (XXE)',
+    pattern: /\bSYSTEM\s+["']/i,
+  },
+  {
+    id: 'xml-entity-public',
+    description: 'PUBLIC keyword — used in external entity declarations (XXE)',
+    pattern: /\bPUBLIC\s+["']/i,
+  },
+  {
+    id: 'xml-entity-declaration',
+    description: '<!ENTITY declaration — defines entities, potential XXE or entity expansion',
+    pattern: /<!ENTITY[\s%]/i,
+  },
+  {
+    id: 'xml-billion-laughs',
+    description: 'Entity reference chaining / billion laughs: repeated &eX; style references',
+    // Heuristic: 3+ consecutive entity refs suggests expansion attack
+    pattern: /(?:&\w{1,20};){3,}/,
+  },
+  {
+    id: 'xml-namespace-confusion',
+    description: 'xmlns: attribute injection — can redefine namespaces to confuse parsers',
+    pattern: /\bxmlns\s*(?::\w{1,40})?\s*=/i,
+  },
+  {
+    id: 'xml-comment-injection',
+    description: '<!-- comment injection — can hide content from some parsers',
+    pattern: /<!--/,
+  },
+  {
+    id: 'xml-comment-close',
+    description: '--> closes an enclosing XML comment',
+    pattern: /-->/,
+  },
+  {
+    id: 'xml-pi-close',
+    description: '?> closes an enclosing processing instruction',
+    pattern: /\?>/,
+  },
+];
+
+/* harmony default export */ const xml = (XML_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/svg.js
+/**
+ * SVG context patterns.
+ *
+ * SVG is XML-based but renders in browsers, giving it a unique attack surface
+ * that combines XML parser behaviour with browser rendering and JavaScript execution.
+ *
+ * Many of these vectors bypass HTML sanitizers that don't understand SVG semantics
+ * (DOMPurify has documented bypass vulnerabilities specifically in SVG/XML context).
+ */
+
+const SVG_PATTERNS = [
+  {
+    id: 'svg-script-element',
+    description: '<script element inside SVG executes JavaScript',
+    pattern: /<script[\s>/]/i,
+  },
+  {
+    id: 'svg-xlink-href-javascript',
+    description: 'xlink:href with javascript: — classic SVG XSS via <a> or <use>',
+    pattern: /xlink\s*:\s*href\s*=\s*["']?\s*javascript\s*:/i,
+  },
+  {
+    id: 'svg-href-javascript',
+    description: 'href= with javascript: in SVG context (<a>, <animate>, etc.)',
+    pattern: /href\s*=\s*["']?\s*javascript\s*:/i,
+  },
+  {
+    id: 'svg-foreignobject',
+    description: '<foreignObject embeds HTML inside SVG — can execute scripts',
+    pattern: /<foreignObject[\s>/]/i,
+  },
+  {
+    id: 'svg-use-external',
+    description: '<use xlink:href or href pointing to external resource (non-fragment URL)',
+    // Match <use with href= where the value starts with a non-# character (external URL)
+    // [\"'][^#] catches quoted values not starting with #; [^\"'#\s>] catches unquoted
+    pattern: /<use[\s\S]{0,60}(?:xlink\s*:\s*)?href\s*=\s*(?:["'][^#]|[^"'#\s>])/i,
+  },
+  {
+    id: 'svg-animate-href',
+    description: '<animate attributeName="href" — can dynamically change href to javascript:',
+    pattern: /<animate[\s\S]{0,80}attributeName\s*=\s*["'][\s]*href["']/i,
+  },
+  {
+    id: 'svg-animate-xlinkhref',
+    description: '<animate attributeName="xlink:href"',
+    pattern: /<animate[\s\S]{0,80}attributeName\s*=\s*["'][\s]*xlink\s*:\s*href["']/i,
+  },
+  {
+    id: 'svg-set-javascript',
+    description: '<set to="javascript:..." — sets an attribute to a javascript: URI',
+    pattern: /<set[\s\S]{0,80}to\s*=\s*["']?\s*javascript\s*:/i,
+  },
+  {
+    id: 'svg-event-handler',
+    description: 'SVG-specific event handler attributes: onload=, onerror=, onactivate=, etc.',
+    pattern: /\bon(?:load|error|activate|begin|end|repeat|focus|blur|click|mouse\w{1,20}|key\w{1,20})\s*=/i,
+  },
+  {
+    id: 'svg-handler-generic',
+    description: 'Generic on* handler catch-all for SVG attributes',
+    pattern: /\bon\w{1,30}\s*=/i,
+  },
+  {
+    id: 'svg-filter-feimage',
+    description: '<feImage href= — filter primitive that can load external resources',
+    pattern: /<feImage[\s\S]{0,80}(?:xlink\s*:\s*)?href\s*=/i,
+  },
+  {
+    id: 'svg-image-external',
+    description: '<image xlink:href with http/https or javascript protocol',
+    pattern: /<image[\s\S]{0,80}(?:xlink\s*:\s*)?href\s*=\s*["']?\s*(?:https?|javascript)\s*:/i,
+  },
+  {
+    id: 'svg-style-javascript',
+    description: 'style= attribute containing javascript: (e.g. background:url(javascript:...))',
+    pattern: /style\s*=[\s\S]{0,60}javascript\s*:/i,
+  },
+];
+
+/* harmony default export */ const svg = (SVG_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/sql.js
+/**
+ * SQL context patterns — high-precision rules only.
+ *
+ * These rules have very low false-positive risk and are safe to apply to
+ * general user text (names, descriptions, search queries, etc.).
+ * All patterns are ReDoS-safe — unlike the `sql-injection` npm package
+ * which has an active CVE on its own detection regexes.
+ *
+ * For exhaustive coverage including noisier heuristics (comment sequences,
+ * hex literals, stacked queries with semicolons), use 'SQL-STRICT' instead.
+ * Apply 'SQL-STRICT' only to strings that are specifically SQL fragments,
+ * not to general free-text fields.
+ */
+
+const SQL_PATTERNS = [
+  {
+    id: 'sql-block-comment-open',
+    description: 'SQL block comment open: /* ... */ — unusual in legitimate user text',
+    pattern: /\/\*/,
+  },
+  {
+    id: 'sql-union-select',
+    description: 'UNION SELECT — most common SQL injection aggregation attack',
+    pattern: /\bUNION\s{1,20}(?:ALL\s{1,20})?SELECT\b/i,
+  },
+  {
+    id: 'sql-drop-table',
+    description: 'DROP TABLE — destructive DDL injection',
+    pattern: /\bDROP\s{1,20}TABLE\b/i,
+  },
+  {
+    id: 'sql-drop-database',
+    description: 'DROP DATABASE — destructive DDL injection',
+    pattern: /\bDROP\s{1,20}DATABASE\b/i,
+  },
+  {
+    id: 'sql-insert-into',
+    description: 'INSERT INTO — data injection',
+    pattern: /\bINSERT\s{1,20}INTO\b/i,
+  },
+  {
+    id: 'sql-delete-from',
+    description: 'DELETE FROM — data deletion injection',
+    pattern: /\bDELETE\s{1,20}FROM\b/i,
+  },
+  {
+    id: 'sql-update-set',
+    description: 'UPDATE ... SET — data modification injection',
+    // Allows arbitrary content between UPDATE and SET (table name, alias, etc.)
+    pattern: /\bUPDATE\b[\s\S]{1,60}\bSET\b/i,
+  },
+  {
+    id: 'sql-exec-xp',
+    description: 'EXEC xp_ — MSSQL extended stored procedure execution',
+    pattern: /\bEXEC(?:UTE)?\s{1,20}xp_/i,
+  },
+  {
+    id: 'sql-tautology-string',
+    description: "Classic string tautology: ' OR '1'='1 or \" OR \"1\"=\"1\"",
+    // Last quote is optional — injection may truncate it: ' OR '1'='1--
+    pattern: /'\s{0,10}OR\s{0,10}'[^']{0,20}'\s*=\s*'[^']{0,20}/i,
+  },
+  {
+    id: 'sql-tautology-numeric',
+    description: 'Numeric tautology: OR 1=1',
+    pattern: /\bOR\s{1,10}1\s*=\s*1\b/i,
+  },
+  {
+    id: 'sql-always-true-zero',
+    description: 'Numeric tautology: OR 0=0',
+    pattern: /\bOR\s{1,10}0\s*=\s*0\b/i,
+  },
+  {
+    id: 'sql-sleep-benchmark',
+    description: 'Time-based blind injection: SLEEP() or BENCHMARK()',
+    pattern: /\b(?:SLEEP|BENCHMARK)\s*\(/i,
+  },
+  {
+    id: 'sql-waitfor-delay',
+    description: 'MSSQL time-based blind injection: WAITFOR DELAY',
+    pattern: /\bWAITFOR\s{1,20}DELAY\b/i,
+  },
+  {
+    id: 'sql-char-function',
+    description: 'CHAR() function — used to obfuscate injected strings',
+    pattern: /\bCHAR\s*\(\s*\d{1,3}/i,
+  },
+  {
+    id: 'sql-information-schema',
+    description: 'INFORMATION_SCHEMA — reconnaissance query for table/column enumeration',
+    pattern: /\bINFORMATION_SCHEMA\b/i,
+  },
+];
+
+/* harmony default export */ const sql = (SQL_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/sql-strict.js
+/**
+ * SQL-STRICT context patterns.
+ *
+ * Extends the base 'SQL' context with three additional rules that are
+ * effective at detecting real injections but carry a higher false-positive
+ * risk on general free-text input.
+ *
+ * Use 'SQL-STRICT' when:
+ *   - The string is specifically a SQL fragment or database identifier
+ *   - You control the input domain (e.g. a dedicated SQL search field)
+ *   - You can tolerate occasional false positives in exchange for broader coverage
+ *
+ * Use 'SQL' (not STRICT) when:
+ *   - The field is general user text (names, descriptions, comments)
+ *   - False positives would block legitimate content (e.g. "see note -- above")
+ *
+ * Rules moved here from 'SQL' due to false-positive risk:
+ *
+ *   sql-line-comment   — "--" fires on "see note -- above", "value--", CSS var(--primary)
+ *   sql-stacked-query  — "; SELECT" fires on legitimate prose with semicolons + SQL words
+ *   sql-hex-encoding   — "0xDEAD" fires on hex values in technical docs and log output
+ */
+
+
+
+const SQL_STRICT_EXTRA = [
+  {
+    id: 'sql-line-comment',
+    description: 'SQL line comment: -- followed by whitespace or end of string',
+    pattern: /--(?:\s|$)/,
+  },
+  {
+    id: 'sql-stacked-query',
+    description: 'Stacked queries: semicolon immediately followed by a SQL keyword',
+    pattern: /;\s{0,10}(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC)\b/i,
+  },
+  {
+    id: 'sql-hex-encoding',
+    description: 'Hex-encoded string injection: 0x41414141 style (MySQL)',
+    pattern: /\b0x[0-9a-f]{4,}/i,
+  },
+];
+
+// SQL-STRICT = all base SQL rules + the three noisy extras
+const SQL_STRICT_PATTERNS = [...sql, ...SQL_STRICT_EXTRA];
+
+/* harmony default export */ const sql_strict = (SQL_STRICT_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/shell.js
+/**
+ * SHELL context patterns.
+ *
+ * Detects shell injection vectors and path traversal patterns.
+ * Designed for use when a string will be passed to a shell command,
+ * used as a file path, or interpolated into OS-level operations.
+ */
+
+const SHELL_PATTERNS = [
+  {
+    id: 'shell-path-traversal-unix',
+    description: 'Unix path traversal: ../  — climbing the directory tree',
+    pattern: /\.\.\//,
+  },
+  {
+    id: 'shell-path-traversal-windows',
+    description: 'Windows path traversal: ..\\ — climbing the directory tree',
+    pattern: /\.\.\\/,
+  },
+  {
+    id: 'shell-path-traversal-encoded',
+    description: 'URL-encoded path traversal: %2e%2e or %2f variants',
+    pattern: /%2e%2e|%2f\.\.|\.\.%2f/i,
+  },
+  {
+    id: 'shell-null-byte',
+    description: 'Null byte injection: \\x00 or %00 — truncates strings in C-backed functions',
+    pattern: /\x00|%00/,
+  },
+  {
+    id: 'shell-semicolon',
+    description: 'Semicolon command separator: cmd1; cmd2',
+    pattern: /;/,
+  },
+  {
+    id: 'shell-pipe',
+    description: 'Pipe operator: cmd1 | cmd2',
+    pattern: /\|/,
+  },
+  {
+    id: 'shell-and-operator',
+    description: 'AND operator: cmd1 && cmd2',
+    pattern: /&&/,
+  },
+  {
+    id: 'shell-or-operator',
+    description: 'OR operator: cmd1 || cmd2',
+    pattern: /\|\|/,
+  },
+  {
+    id: 'shell-backtick',
+    description: 'Backtick command substitution: `cmd`',
+    pattern: /`/,
+  },
+  {
+    id: 'shell-dollar-paren',
+    description: 'Dollar-paren command substitution: $(cmd)',
+    pattern: /\$\(/,
+  },
+  {
+    id: 'shell-dollar-brace',
+    description: 'Dollar-brace variable expansion: ${var} — can be abused for injection',
+    pattern: /\$\{/,
+  },
+  {
+    id: 'shell-redirect-out',
+    description: 'Output redirection: cmd > file or cmd >> file',
+    pattern: />{1,2}/,
+  },
+  {
+    id: 'shell-redirect-in',
+    description: 'Input redirection: cmd < file',
+    pattern: /</,
+  },
+  {
+    id: 'shell-newline-injection',
+    description: 'Newline injection: \\n or \\r — can inject new shell commands',
+    pattern: /[\n\r]/,
+  },
+  {
+    id: 'shell-glob-star',
+    description: 'Glob expansion: * or ? — can expand to unintended files',
+    // Only flag when combined with path separators to reduce false positives
+    pattern: /[/\\][*?]/,
+  },
+  {
+    id: 'shell-absolute-root',
+    description: 'Absolute root path injection: string starting with / or \\ (Windows UNC)',
+    pattern: /^(?:\/|\\\\)/,
+  },
+  {
+    id: 'shell-windows-drive',
+    description: 'Windows drive letter path injection: C:\\ or D:/',
+    pattern: /^[a-zA-Z]:[/\\]/,
+  },
+  {
+    id: 'shell-curl-wget',
+    description: 'curl/wget with URL or flags — can exfiltrate data or download payloads',
+    // Require a URL scheme (http/https/ftp) or a flag (-) to reduce false positives
+    // "curl is a tool" won't match; "curl http://..." or "curl -s ..." will
+    pattern: /\b(?:curl|wget)\s+(?:https?:\/\/|ftp:\/\/|-)/i,
+  },
+];
+
+/* harmony default export */ const shell = (SHELL_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/redos.js
+/**
+ * REDOS context patterns.
+ *
+ * Detects strings that, if used as regular expressions, could cause
+ * catastrophic backtracking (ReDoS — Regular Expression Denial of Service).
+ *
+ * These patterns detect the structural forms that lead to exponential or
+ * polynomial backtracking in NFA-based regex engines (V8, PCRE, Java, etc.).
+ *
+ * Use this context when user-supplied strings will be compiled into RegExp objects.
+ */
+
+const REDOS_PATTERNS = [
+  {
+    id: 'redos-nested-quantifier-plus',
+    description: 'Nested + quantifier inside a group with outer quantifier: (a+)+, (.+b)*, etc.',
+    // Matches any group containing a + quantifier, with an outer * or + — catches (a+)+, (.+b)*, etc.
+    pattern: /\([^)]*\+[^)]*\)[+*]/,
+  },
+  {
+    id: 'redos-nested-quantifier-star',
+    description: 'Nested * quantifier: (a*)* or (a*)+ — catastrophic backtracking',
+    pattern: /\([^)]*\*[^)]*\)[*+]/,
+  },
+  {
+    id: 'redos-nested-groups',
+    description: 'Doubly nested quantified groups: ((a+)+) — guaranteed catastrophic',
+    pattern: /\(\([^)]{0,40}\)[+*]\)[+*]/,
+  },
+  {
+    id: 'redos-alternation-overlap',
+    description: 'Overlapping alternation under quantifier: (a|a)+ — ambiguous NFA paths',
+    // Detect repeated identical alternatives under a quantifier
+    pattern: /\(([^|()]{1,20})\|(?:\1)(?:\|[^|()]{1,20}){0,5}\)[+*?]{1,2}/,
+  },
+  {
+    id: 'redos-star-plus-concat',
+    description: '(x*x)+ pattern — triggers super-linear backtracking',
+    pattern: /\([^)]{0,10}\*[^)]{0,10}\)[+*]/,
+  },
+  {
+    id: 'redos-dot-star-greedy',
+    description: '(.*){n,} or (.+){n,} — repeated greedy dot quantifiers',
+    pattern: /\(\.[*+]\)\{?\d/,
+  },
+  {
+    id: 'redos-large-repetition',
+    description: 'Very large fixed or range repetition count {1000,} or {1000,n} — denial of service via backtracking',
+    // Matches { followed by 4+ digits (≥1000), then optional ,digits }
+    pattern: /\{\d{4,}(?:,\d*)?\}/,
+  },
+  {
+    id: 'redos-catastrophic-alternation',
+    description: 'Long alternation with many similar branches — polynomial backtracking risk',
+    // Heuristic: 10+ pipe-separated alternatives in a single group
+    pattern: /\([^)]{0,200}(?:\|[^|)]{0,50}){9,}\)/,
+  },
+];
+
+/* harmony default export */ const redos = (REDOS_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/nosql.js
+/**
+ * NOSQL context patterns.
+ *
+ * Detects injection vectors specific to NoSQL databases (primarily MongoDB)
+ * and JavaScript-evaluated queries.
+ *
+ * Attack categories:
+ *   1. MongoDB query operator injection: $where, $ne, $gt, $regex, $or, $and, etc.
+ *      These operators, when injected into a JSON query object, can bypass
+ *      authentication or exfiltrate data without knowing passwords.
+ *
+ *   2. JavaScript execution: $where clauses execute arbitrary JS server-side.
+ *
+ *   3. Prototype pollution: __proto__, constructor.prototype — can corrupt
+ *      the prototype chain of all objects in the Node.js process.
+ *
+ * Pattern note: MongoDB operators appear as JSON keys. In JSON, keys are
+ * quoted: {"$where": ...} so the pattern must allow an optional closing
+ * quote between the operator name and the colon: /\$where["'\s]*:/
+ */
+
+// Shared suffix: optional closing quote/whitespace before the colon
+// Handles: $op: (bare), "$op": (JSON), '$op': (single-quoted)
+const SEP = /["'\s]*:/;
+const sep = '["\'\\s]*:';
+
+const NOSQL_PATTERNS = [
+  // ─── MongoDB $ operator injection ────────────────────────────────────────
+  {
+    id: 'nosql-where-operator',
+    description: '$where — executes arbitrary JavaScript server-side in MongoDB',
+    pattern: new RegExp(`\\$where${sep}`, 'i'),
+  },
+  {
+    id: 'nosql-ne-operator',
+    description: '$ne — "not equal" operator used to bypass equality checks',
+    pattern: new RegExp(`\\$ne${sep}`, 'i'),
+  },
+  {
+    id: 'nosql-gt-operator',
+    description: '$gt — "greater than" used to bypass password/value checks',
+    pattern: new RegExp(`\\$gte?${sep}`, 'i'),
+  },
+  {
+    id: 'nosql-lt-operator',
+    description: '$lt / $lte — "less than" bypass variants',
+    pattern: new RegExp(`\\$lte?${sep}`, 'i'),
+  },
+  {
+    id: 'nosql-regex-operator',
+    description: '$regex — can be used to extract data character by character (blind injection)',
+    pattern: new RegExp(`\\$regex${sep}`, 'i'),
+  },
+  {
+    id: 'nosql-or-operator',
+    description: '$or — logical OR; used to create always-true conditions',
+    pattern: new RegExp(`\\$or${sep}\\s*\\[`, 'i'),
+  },
+  {
+    id: 'nosql-and-operator',
+    description: '$and — logical AND operator injection',
+    pattern: new RegExp(`\\$and${sep}\\s*\\[`, 'i'),
+  },
+  {
+    id: 'nosql-nor-operator',
+    description: '$nor — logical NOR operator injection',
+    pattern: new RegExp(`\\$nor${sep}\\s*\\[`, 'i'),
+  },
+  {
+    id: 'nosql-exists-operator',
+    description: '$exists — can enumerate fields to determine schema',
+    pattern: new RegExp(`\\$exists${sep}`, 'i'),
+  },
+  {
+    id: 'nosql-in-operator',
+    description: '$in — matches any value in a list; can enumerate values',
+    pattern: new RegExp(`\\$in${sep}\\s*\\[`, 'i'),
+  },
+  {
+    id: 'nosql-expr-operator',
+    description: '$expr — allows aggregation expressions in queries (MongoDB 3.6+)',
+    pattern: new RegExp(`\\$expr${sep}`, 'i'),
+  },
+  {
+    id: 'nosql-function-operator',
+    description: '$function — executes arbitrary JavaScript in MongoDB 4.4+',
+    pattern: new RegExp(`\\$function${sep}`, 'i'),
+  },
+  {
+    id: 'nosql-accumulator-operator',
+    description: '$accumulator — custom aggregation with arbitrary JS execution',
+    pattern: new RegExp(`\\$accumulator${sep}`, 'i'),
+  },
+  // ─── Prototype pollution ─────────────────────────────────────────────────
+  {
+    id: 'nosql-proto-pollution',
+    description: '__proto__ — prototype pollution via object key injection',
+    pattern: /__proto__/,
+  },
+  {
+    id: 'nosql-constructor-prototype',
+    description: 'constructor.prototype — alternative prototype pollution vector (dot notation or JSON key)',
+    // Matches dot-notation (obj.constructor.prototype) and JSON key adjacency
+    // ("constructor": {"prototype": ...})
+    pattern: /constructor[\s"':.,{\[]*prototype/i,
+  },
+  {
+    id: 'nosql-proto-bracket',
+    description: '["__proto__"] — bracket-notation prototype pollution',
+    pattern: /\[["']__proto__["']\]/,
+  },
+];
+
+/* harmony default export */ const nosql = (NOSQL_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/contexts/log.js
+/**
+ * LOG context patterns.
+ *
+ * Detects injection vectors that are dangerous when a string is written
+ * to a log file, passed to a logging framework, or interpolated into
+ * a log message that will be parsed or displayed.
+ *
+ * Attack categories:
+ *   1. CRLF injection — injects fake log lines by embedding newlines
+ *   2. Log4Shell (CVE-2021-44228) — ${jndi:...} triggers JNDI lookup in Log4j
+ *   3. SSTI in log templates — {{...}}, #{...} trigger template evaluation
+ *      if the log message is passed through a template engine
+ *   4. Null byte injection — truncates log entries in some implementations
+ *   5. ANSI escape injection — manipulates terminal output when logs are
+ *      tailed in a terminal (colour codes, cursor movement, etc.)
+ *
+ * Note: Newline characters (\n, \r) will produce false positives for
+ * multi-line legitimate values. Use this context only for single-line
+ * log field values (usernames, IDs, request parameters, etc.).
+ */
+
+const LOG_PATTERNS = [
+  // ─── CRLF / newline injection ─────────────────────────────────────────────
+  {
+    id: 'log-crlf-injection',
+    description: 'CRLF injection: literal \\r or \\n embeds fake log lines',
+    pattern: /[\r\n]/,
+  },
+  {
+    id: 'log-url-encoded-crlf',
+    description: 'URL-encoded CRLF: %0d, %0a, %0D, %0A — decoded by some log parsers',
+    pattern: /%0[dDaA]/,
+  },
+  {
+    id: 'log-unicode-newline',
+    description: 'Unicode newline variants: U+2028 (line separator), U+2029 (paragraph separator)',
+    pattern: /[\u2028\u2029]/,
+  },
+
+  // ─── Log4Shell / JNDI injection (CVE-2021-44228) ─────────────────────────
+  {
+    id: 'log-log4shell-jndi',
+    description: 'Log4Shell: ${jndi:...} triggers remote code execution in Apache Log4j',
+    pattern: /\$\{jndi\s*:/i,
+  },
+  {
+    id: 'log-log4shell-obfuscated',
+    description: 'Obfuscated Log4Shell: ${::-j}... lookup-bypass prefix used to evade WAF detection',
+    // ${::- is the Log4j lookup-bypass escape sequence; presence alone is suspicious
+    pattern: /\$\{::-/,
+  },
+  {
+    id: 'log-log4j-lookup',
+    description: 'Log4j lookup syntax: ${env:...}, ${sys:...}, ${ctx:...} — data exfiltration',
+    pattern: /\$\{(?:env|sys|ctx|main|map|sd|web|docker|k8s|spring)\s*:/i,
+  },
+
+  // ─── Server-Side Template Injection (SSTI) in log messages ───────────────
+  {
+    id: 'log-ssti-double-brace',
+    description: 'SSTI double-brace: {{expression}} — Jinja2, Twig, Handlebars, etc.',
+    pattern: /\{\{[\s\S]{0,80}\}\}/,
+  },
+  {
+    id: 'log-ssti-hash-brace',
+    description: 'SSTI hash-brace: #{expression} — Thymeleaf, Velocity, Ruby ERB',
+    pattern: /#\{[\s\S]{0,80}\}/,
+  },
+  {
+    id: 'log-ssti-dollar-brace',
+    description: 'SSTI/EL injection: ${expression with operators or method calls} — JSP EL, Freemarker, SpEL',
+    // Require that the ${...} content looks like an expression, not a plain variable name.
+    // Flags if the content contains: . ( * + operators, or known SSTI keywords.
+    // This avoids flagging ${PATH}, ${HOME} etc. (plain shell variables).
+    pattern: /\$\{[^}]*(?:\.|\(|\*|\+|\bclass\b|\bruntime\b|\bprocess\b|\bexec\b)[^}]{0,80}\}/i,
+  },
+  {
+    id: 'log-ssti-percent-tag',
+    description: 'SSTI ERB/ASP tag: <%= expression %> — Ruby ERB, ASP',
+    pattern: /<%=[\s\S]{0,80}%>/,
+  },
+
+  // ─── Null byte ────────────────────────────────────────────────────────────
+  {
+    id: 'log-null-byte',
+    description: 'Null byte: \\x00 or %00 — can truncate log entries in C-backed loggers',
+    pattern: /\x00|%00/,
+  },
+
+  // ─── ANSI escape injection ────────────────────────────────────────────────
+  {
+    id: 'log-ansi-escape',
+    description: 'ANSI escape sequence: ESC[ — can manipulate terminal output when logs are tailed',
+    pattern: /\x1b\[/,
+  },
+];
+
+/* harmony default export */ const contexts_log = (LOG_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/registry.js
+/**
+ * Context registry — maps context name strings to their pattern arrays.
+ *
+ * Adding a new context: create a file in ./contexts/, export a default array
+ * of pattern objects, and register it here.
+ *
+ * Context name guide:
+ *   SQL        — high-precision rules; safe for general text fields
+ *   SQL-STRICT — SQL + three noisier rules (line comments, stacked queries, hex);
+ *                use only for SQL-specific inputs
+ *   REDOS      — detects ReDoS-prone patterns when string will be compiled as RegExp
+ */
+
+
+
+
+
+
+
+
+
+
+
+/** @type {Record<string, Array<{id: string, description: string, pattern: RegExp}>>} */
+const registry_CONTEXT_REGISTRY = {
+  HTML: html,
+  XML: xml,
+  SVG: svg,
+  SQL: sql,
+  'SQL-STRICT': sql_strict,
+  SHELL: shell,
+  REDOS: redos,
+  NOSQL: nosql,
+  LOG: contexts_log,
+};
+
+/* harmony default export */ const registry = (registry_CONTEXT_REGISTRY);
+
+/**
+ * Enum of valid context names — e.g. `VALID_CONTEXTS.HTML === 'HTML'`.
+ * @type {Record<string, string>}
+ */
+const VALID_CONTEXTS = Object.freeze(
+  Object.fromEntries(Object.keys(registry_CONTEXT_REGISTRY).map((k) => [k, k]))
+);
+;// CONCATENATED MODULE: ./node_modules/is-unsafe/src/index.js
+/**
+ * is-unsafe
+ *
+ * Zero-dependency, DOM-free, pure predicate for detecting unsafe strings
+ * across HTML, XML, SVG, SQL, SQL-STRICT, SHELL, REDOS, NOSQL, and LOG contexts.
+ *
+ * @module is-unsafe
+ */
+
+
+
+/**
+ * @typedef {'HTML'|'XML'|'SVG'|'SQL'|'SQL-STRICT'|'SHELL'|'REDOS'|'NOSQL'|'LOG'} ContextName
+ */
+
+/**
+ * @typedef {Object} MatchResult
+ * @property {string} context   - The context in which the match was found
+ * @property {string} id        - Rule identifier
+ * @property {string} description - Human-readable description of what was matched
+ * @property {RegExp} pattern   - The pattern that matched
+ */
+
+// ─── Validation helpers ────────────────────────────────────────────────────
+
+/**
+ * Validate that `value` is a string. Throws TypeError if not.
+ * @param {unknown} value
+ */
+function assertString(value) {
+  if (typeof value !== 'string') {
+    throw new TypeError(
+      `is-unsafe: first argument must be a string, got ${typeof value}`
+    );
+  }
+}
+
+/**
+ * Validate that `context` is a recognised context name, an array of them,
+ * or a RegExp instance. Throws TypeError if not.
+ * @param {ContextName|ContextName[]|RegExp} context
+ */
+function assertContext(context) {
+  if (context instanceof RegExp) return;
+
+  if (typeof context === 'string') {
+    if (!registry[context]) {
+      throw new TypeError(
+        `is-unsafe: unknown context "${context}". Valid contexts: ${Object.keys(VALID_CONTEXTS).join(', ')}`
+      );
+    }
+    return;
+  }
+
+  if (Array.isArray(context)) {
+    if (context.length === 0) {
+      throw new TypeError('is-unsafe: context array must not be empty');
+    }
+    for (const c of context) {
+      if (typeof c !== 'string' || !registry[c]) {
+        throw new TypeError(
+          `is-unsafe: unknown context "${c}" in array. Valid contexts: ${Object.keys(VALID_CONTEXTS).join(', ')}`
+        );
+      }
+    }
+    return;
+  }
+
+  throw new TypeError(
+    `is-unsafe: second argument must be a context string, array of context strings, or RegExp. Got: ${typeof context}`
+  );
+}
+
+// ─── Core matching logic ───────────────────────────────────────────────────
+
+/**
+ * Test a single value against one named context's patterns.
+ * Returns the first matching MatchResult, or null if nothing matched.
+ *
+ * @param {string} value
+ * @param {string} contextName
+ * @returns {MatchResult|null}
+ */
+function matchContext(value, contextName) {
+  const patterns = registry[contextName];
+  for (const rule of patterns) {
+    if (rule.pattern.test(value)) {
+      return { context: contextName, id: rule.id, description: rule.description, pattern: rule.pattern };
+    }
+  }
+  return null;
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────
+
+/**
+ * Returns `true` if `value` is unsafe in the given context(s), `false` otherwise.
+ *
+ * @param {string} value           - The string to test
+ * @param {ContextName|ContextName[]|RegExp} context
+ *   - A named context ('HTML', 'XML', 'SVG', 'SQL', 'SQL-STRICT', 'SHELL', 'REDOS', 'NOSQL', 'LOG')
+ *   - An array of named contexts — returns true if unsafe in **any** of them
+ *   - A custom RegExp — returns true if the pattern matches
+ * @returns {boolean}
+ *
+ * @example
+ * isUnsafe('<script>alert(1)</script>', 'HTML')  // true
+ * isUnsafe('hello world', 'HTML')                // false
+ * isUnsafe('value', ['HTML', 'SQL'])             // false
+ * isUnsafe('value', /my-pattern/i)               // false
+ */
+function isUnsafe(value, context) {
+  assertString(value);
+  assertContext(context);
+
+  // Custom RegExp — caller-supplied pattern
+  if (context instanceof RegExp) {
+    return context.test(value);
+  }
+
+  // Single named context
+  if (typeof context === 'string') {
+    return matchContext(value, context) !== null;
+  }
+
+  // Array of named contexts — unsafe if ANY context matches
+  for (const c of context) {
+    if (matchContext(value, c) !== null) return true;
+  }
+  return false;
+}
+
+/**
+ * Like `isUnsafe`, but instead of a boolean returns the first `MatchResult`
+ * describing **why** the value was flagged, or `null` if it is safe.
+ *
+ * Useful for logging, error messages, or policy reporting.
+ *
+ * @param {string} value
+ * @param {ContextName|ContextName[]|RegExp} context
+ * @returns {MatchResult|null}
+ *
+ * @example
+ * whyUnsafe('<script>alert(1)</script>', 'HTML')
+ * // { context: 'HTML', id: 'html-script-open', description: '...', pattern: /.../ }
+ */
+function whyUnsafe(value, context) {
+  assertString(value);
+  assertContext(context);
+
+  if (context instanceof RegExp) {
+    return context.test(value)
+      ? { context: 'CUSTOM', id: 'custom-regex', description: 'Matched caller-supplied pattern', pattern: context }
+      : null;
+  }
+
+  if (typeof context === 'string') {
+    return matchContext(value, context);
+  }
+
+  for (const c of context) {
+    const result = matchContext(value, c);
+    if (result !== null) return result;
+  }
+  return null;
+}
+
+/**
+ * Returns all matching rules across the given context(s), or an empty array
+ * if the value is safe. Useful for comprehensive auditing.
+ *
+ * @param {string} value
+ * @param {ContextName|ContextName[]|RegExp} context
+ * @returns {MatchResult[]}
+ */
+function allUnsafe(value, context) {
+  assertString(value);
+  assertContext(context);
+
+  const results = [];
+
+  if (context instanceof RegExp) {
+    if (context.test(value)) {
+      results.push({ context: 'CUSTOM', id: 'custom-regex', description: 'Matched caller-supplied pattern', pattern: context });
+    }
+    return results;
+  }
+
+  const contexts = typeof context === 'string' ? [context] : context;
+
+  for (const c of contexts) {
+    const patterns = CONTEXT_REGISTRY[c];
+    for (const rule of patterns) {
+      if (rule.pattern.test(value)) {
+        results.push({ context: c, id: rule.id, description: rule.description, pattern: rule.pattern });
+      }
+    }
+  }
+
+  return results;
+}
+
+
+/* harmony default export */ const src = ((/* unused pure expression or super */ null && (isUnsafe)));
 ;// CONCATENATED MODULE: ./node_modules/fast-xml-parser/src/xmlparser/OrderedObjParser.js
 
 ///@ts-check
+
+
 
 
 
@@ -96962,7 +98105,13 @@ class OrderedObjParser {
           maxTotalExpansions: this.options.processEntities.maxTotalExpansions,
           maxExpandedLength: this.options.processEntities.maxExpandedLength,
           applyLimitsTo: this.options.processEntities.appliesTo,
-        }
+        },
+        // onExternalEntity: (name, value) => isUnsafe(value) ? 'block' : 'allow',
+        onInputEntity: (name, value) =>
+          //TODO: VALID_CONTEXTS.HTML should be set only if this.options.htmlEntities
+          isUnsafe(value, [VALID_CONTEXTS.HTML, VALID_CONTEXTS.XML])
+            ? ENTITY_ACTION.BLOCK : ENTITY_ACTION.ALLOW,
+
         //postCheck: resolved => resolved
       });
     }
@@ -131977,8 +133126,8 @@ function withCustomRequest(customRequest) {
 ;// CONCATENATED MODULE: ./node_modules/@octokit/auth-token/dist-bundle/index.js
 // pkg/dist-src/is-jwt.js
 var b64url = "(?:[a-zA-Z0-9_-]+)";
-var sep = "\\.";
-var jwtRE = new RegExp(`^${b64url}${sep}${b64url}${sep}${b64url}$`);
+var dist_bundle_sep = "\\.";
+var jwtRE = new RegExp(`^${b64url}${dist_bundle_sep}${b64url}${dist_bundle_sep}${b64url}$`);
 var isJWT = jwtRE.test.bind(jwtRE);
 
 // pkg/dist-src/auth.js
