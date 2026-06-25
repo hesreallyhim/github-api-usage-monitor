@@ -2,7 +2,9 @@
 
 The table below represents the 60-minute reset window buckets. The limits are the primary rate limits for authenticated users and PATs - GitHub App installation tokens and Enterprise users may have different limits. Additionally `GITHUB_TOKEN` has a primary rate limit of 1,000 requests per repository per hour.[^1]
 
-GitHub is removing the deprecated `code_scanning_upload` field from the `/rate_limit` API response on May 19, 2026. Until that date, responses may still include that field; this action does not track or report it because GitHub documents code scanning uploads as counted under `core`.[^2]
+GitHub scheduled the removal of the deprecated `code_scanning_upload` field from the `/rate_limit` API response for May 19, 2026. If a stale response still includes that field, this action does not track or report it because GitHub documents code scanning uploads as counted under `core`.[^2]
+
+GitHub's `/rate_limit` schema also now documents a `copilot_usage_records` bucket. The monitored GitHub Docs pages do not currently describe its reset window, so it is not classified in the tables below; this action will still report it automatically if GitHub returns it.
 
 | Bucket | Limit per window |
 | --- | --- |

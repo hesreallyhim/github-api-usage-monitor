@@ -108,7 +108,7 @@ describe('parseRateLimitResponse', () => {
     expect(buckets).not.toContain('code_scanning_upload');
   });
 
-  it('preemptively ignores code_scanning_upload before GitHub removes it', () => {
+  it('ignores deprecated code_scanning_upload if it still appears', () => {
     const result = parseRateLimitResponse({
       resources: {
         core: { limit: 5000, used: 12, remaining: 4988, reset: 1706230800 },
@@ -120,6 +120,20 @@ describe('parseRateLimitResponse', () => {
     expect(result).not.toBeNull();
     expect(result?.resources['core']).toBeDefined();
     expect(result?.resources['code_scanning_upload']).toBeUndefined();
+  });
+
+  it('preserves newly introduced rate-limit buckets without a whitelist change', () => {
+    const sample = { limit: 1000, used: 7, remaining: 993, reset: 1706230800 };
+    const result = parseRateLimitResponse({
+      resources: {
+        core: { limit: 5000, used: 12, remaining: 4988, reset: 1706230800 },
+        copilot_usage_records: sample,
+      },
+      rate: { limit: 5000, used: 12, remaining: 4988, reset: 1706230800 },
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.resources['copilot_usage_records']).toEqual(sample);
   });
 
   it('returns null for invalid response', () => {
