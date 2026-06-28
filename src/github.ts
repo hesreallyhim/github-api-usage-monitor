@@ -18,6 +18,7 @@ import { isARealObject } from './utils';
 
 const RATE_LIMIT_URL = 'https://api.github.com/rate_limit';
 const USER_AGENT = 'github-api-usage-monitor';
+export const GITHUB_API_VERSION = '2026-03-10';
 
 // -----------------------------------------------------------------------------
 // Port: github.fetchRateLimit
@@ -67,7 +68,7 @@ export async function fetchRateLimit(token: string): Promise<FetchRateLimitOutco
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json',
         'User-Agent': USER_AGENT,
-        'X-GitHub-Api-Version': '2022-11-28',
+        'X-GitHub-Api-Version': GITHUB_API_VERSION,
       },
     });
 

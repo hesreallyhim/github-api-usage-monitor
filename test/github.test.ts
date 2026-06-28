@@ -10,7 +10,12 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isValidSample, parseRateLimitResponse, fetchRateLimit } from '../src/github';
+import {
+  GITHUB_API_VERSION,
+  isValidSample,
+  parseRateLimitResponse,
+  fetchRateLimit,
+} from '../src/github';
 import { FETCH_TIMEOUT_MS } from '../src/types';
 import type { RateLimitSample } from '../src/types';
 
@@ -265,6 +270,30 @@ describe('fetchRateLimit', () => {
     if (result.success) {
       expect(result.data.resources['core']).toBeDefined();
     }
+  });
+
+  it('requests the current GitHub REST API version', async () => {
+    const mockResponse = {
+      ok: true,
+      json: vi.fn().mockResolvedValue(standardResponse),
+    };
+    const mockFetch = vi.fn().mockResolvedValue(mockResponse);
+    vi.stubGlobal('fetch', mockFetch);
+
+    await fetchRateLimit('test-token');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.github.com/rate_limit',
+      expect.objectContaining({
+        headers: {
+          Authorization: 'Bearer test-token',
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'github-api-usage-monitor',
+          'X-GitHub-Api-Version': GITHUB_API_VERSION,
+        },
+      }),
+    );
+    expect(GITHUB_API_VERSION).toBe('2026-03-10');
   });
 
   it('returns error for HTTP error response', async () => {

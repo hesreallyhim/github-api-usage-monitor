@@ -8,6 +8,7 @@
  * Fetches rate limit data from the GitHub API.
  */
 import type { RateLimitResponse, RateLimitSample } from './types';
+export declare const GITHUB_API_VERSION = "2026-03-10";
 export interface FetchRateLimitResult {
     success: true;
     data: RateLimitResponse;

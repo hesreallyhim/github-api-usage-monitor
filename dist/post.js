@@ -69539,7 +69539,7 @@ function isIgnoredRateLimitBucket(name) {
 /* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
 /* harmony export */   AD: () => (/* binding */ fetchRateLimit)
 /* harmony export */ });
-/* unused harmony exports isValidSample, parseRateLimitResponse */
+/* unused harmony exports GITHUB_API_VERSION, isValidSample, parseRateLimitResponse */
 /* harmony import */ var _types__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6141);
 /* harmony import */ var _buckets__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(4140);
 /* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(1798);
@@ -69560,6 +69560,7 @@ function isIgnoredRateLimitBucket(name) {
 // -----------------------------------------------------------------------------
 const RATE_LIMIT_URL = 'https://api.github.com/rate_limit';
 const USER_AGENT = 'github-api-usage-monitor';
+const GITHUB_API_VERSION = '2026-03-10';
 /**
  * Fetches rate limit data from GitHub API.
  *
@@ -69579,7 +69580,7 @@ async function fetchRateLimit(token) {
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/vnd.github+json',
                 'User-Agent': USER_AGENT,
-                'X-GitHub-Api-Version': '2022-11-28',
+                'X-GitHub-Api-Version': GITHUB_API_VERSION,
             },
         });
         clearTimeout(timeoutId);
@@ -70321,7 +70322,7 @@ var poll_log = __nccwpck_require__(2233);
  * Pure logic for handling 403/429 responses and gating poll cadence.
  *
  * Based on guidance in current docs at time of writing:
- * https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#exceeding-the-rate-limit
+ * https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10#exceeding-the-rate-limit
  */
 const rate_limit_control_MAX_SECONDARY_RETRIES = 5;
 const SECONDARY_DEFAULT_WAIT_MS = 60_000;

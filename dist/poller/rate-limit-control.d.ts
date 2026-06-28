@@ -5,7 +5,7 @@
  * Pure logic for handling 403/429 responses and gating poll cadence.
  *
  * Based on guidance in current docs at time of writing:
- * https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#exceeding-the-rate-limit
+ * https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10#exceeding-the-rate-limit
  */
 import type { RateLimitErrorDetails } from '../github';
 import type { PollLogEntry, RateLimitErrorKind } from '../types';
