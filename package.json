@@ -48,7 +48,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.4",
     "@typescript-eslint/eslint-plugin": "^8.62.0",
-    "@typescript-eslint/parser": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.1",
     "@vercel/ncc": "^0.44.0",
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.5.0",
