@@ -69520,10 +69520,9 @@ ZipStream.prototype.finalize = function() {
 /**
  * Rate-limit bucket policy.
  *
- * GitHub deprecated resources.code_scanning_upload and will remove it from
- * /rate_limit on 2026-05-19. Until then, API responses may still include it,
- * but code scanning upload usage is documented as accounted under core, so the
- * deprecated alias is intentionally ignored preemptively.
+ * GitHub documents code scanning uploads as accounted under the core bucket.
+ * If the deprecated resources.code_scanning_upload alias still appears in
+ * /rate_limit responses or examples, ignore it so usage is not double-counted.
  */
 const IGNORED_RATE_LIMIT_BUCKETS = new Set(['code_scanning_upload']);
 function isIgnoredRateLimitBucket(name) {

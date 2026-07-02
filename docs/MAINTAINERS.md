@@ -103,6 +103,9 @@ The docs-watch process is local-only and intended for maintainers.
   used for diffing.
 - For recurring runs, prefer a stable private path outside the worktree via
   `DOC_WATCH_STATE_DIR` so snapshots survive `.tmp/` cleanup and worktree churn.
+- If remote snapshots and readable diff artifacts also need to stay outside the
+  worktree, set `DOC_WATCH_REMOTE_DIR` and `DOC_WATCH_REVIEW_DIR` to private
+  paths under the same state root.
 
 ### Local commands
 
@@ -119,16 +122,16 @@ The docs-watch process is local-only and intended for maintainers.
 
 ### Run artifacts
 
-- Check payload: `.tmp/docs-watch/docs-check.json`
-- Unified diff markdown: `.tmp/docs-watch/docs-diff.md`
-- Unified diff patch: `.tmp/docs-watch/docs-diff.patch`
-- Always-on run report (generated every run): `.tmp/docs-watch/docs-watch-report.md`
+- Check payload: `${DOC_WATCH_REVIEW_DIR:-.tmp/docs-watch}/docs-check.json`
+- Unified diff markdown: `${DOC_WATCH_REVIEW_DIR:-.tmp/docs-watch}/docs-diff.md`
+- Unified diff patch: `${DOC_WATCH_REVIEW_DIR:-.tmp/docs-watch}/docs-diff.patch`
+- Always-on run report (generated every run): `${DOC_WATCH_REVIEW_DIR:-.tmp/docs-watch}/docs-watch-report.md`
 
 ### Maintainer review loop
 
 1. Prefer `npm run docs-watch:review` (or let weekly Codex automation use the
    same protocol).
-2. Review `.tmp/docs-watch/docs-watch-report.md` for correctness.
+2. Review the generated `docs-watch-report.md` for correctness.
 3. If the report status is `bootstrap-required`, do not open or update a PR from
    that run. Seed private state with `npm run sync:github-docs-state`, then rerun
    the exact review.
@@ -141,6 +144,8 @@ The docs-watch process is local-only and intended for maintainers.
 
 1. Set a stable private state directory, for example:
    - `export DOC_WATCH_STATE_DIR="$HOME/.local/state/github-api-usage-monitor/docs-watch"`
+   - `export DOC_WATCH_REMOTE_DIR="$DOC_WATCH_STATE_DIR/remote"`
+   - `export DOC_WATCH_REVIEW_DIR="$DOC_WATCH_STATE_DIR/review"`
 2. Run `npm run docs-watch:review`.
 3. Treat the first seeded run as bootstrap, not as a source of patch review.
 4. Only create PRs from an exact synced run with `changed: true`.

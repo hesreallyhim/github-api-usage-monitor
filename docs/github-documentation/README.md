@@ -19,6 +19,9 @@ Example local state location:
 - For recurring local or automated runs, prefer a stable external path via
   `DOC_WATCH_STATE_DIR`, for example
   `$HOME/.local/state/github-api-usage-monitor/docs-watch`
+- If you also want remote snapshots and readable diff artifacts to stay outside
+  the worktree, set `DOC_WATCH_REMOTE_DIR` and `DOC_WATCH_REVIEW_DIR` to
+  private paths under the same state root.
 
 ## Local workflow
 
@@ -26,7 +29,7 @@ Example local state location:
 2. If you are running manually and want explicit control:
    - first run or missing snapshots: `npm run sync:github-docs-state`
    - exact review run: `npm run docs-watch:local`
-3. Ask Codex to review `.tmp/docs-watch/docs-watch-report.md` and classify project impact.
+3. Ask Codex to review the generated `docs-watch-report.md` and classify project impact.
 
 ## Protocol notes
 
