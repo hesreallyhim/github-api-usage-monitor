@@ -68,7 +68,7 @@ function parsePatchStats(patchText) {
   return stats;
 }
 
-function defaultAssessment(payload) {
+function defaultAssessment(payload, diffMarkdownPath) {
   const changedWithoutBaseline = payload.results.some(
     (item) => item.changed && item.baseline_source === 'none',
   );
@@ -105,7 +105,7 @@ function defaultAssessment(payload) {
     rationale:
       'Changes were detected. Review the diff report and classify whether project code or docs need updates.',
     recommendedAction:
-      'Review `.tmp/docs-watch/docs-diff.md`, classify impact, and open/update a draft PR if changes are required.',
+      `Review \`${diffMarkdownPath}\`, classify impact, and open/update a draft PR if changes are required.`,
   };
 }
 
@@ -128,7 +128,7 @@ async function main() {
   const patchText = fs.existsSync(diffPath) ? fs.readFileSync(diffPath, 'utf8') : '';
   const patchStats = parsePatchStats(patchText);
 
-  const assessment = defaultAssessment(checkPayload);
+  const assessment = defaultAssessment(checkPayload, diffMarkdownPath);
 
   const lines = [];
   lines.push('# Docs Watch Run Report');

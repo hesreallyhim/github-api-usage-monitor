@@ -48,6 +48,12 @@
       "remaining": 95,
       "reset": 1706230800
     },
+    "copilot_usage_records": {
+      "limit": 5000,
+      "used": 7,
+      "remaining": 4993,
+      "reset": 1706230800
+    },
     "source_import": {
       "limit": 100,
       "used": 0,
