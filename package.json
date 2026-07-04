@@ -1,6 +1,6 @@
 {
   "name": "github-api-usage-monitor",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "type": "module",
   "description": "Monitor GitHub API usage of a GitHub Action over the course of a job, with bucket-level reporting",
   "main": "dist/main.js",

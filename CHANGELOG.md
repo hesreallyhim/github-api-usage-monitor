@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.0](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v2.0.2...v2.1.0) (2026-07-04)
+
+
+### Features
+
+* update tracked buckets ([#120](https://github.com/hesreallyhim/github-api-usage-monitor/issues/120)) ([6f17010](https://github.com/hesreallyhim/github-api-usage-monitor/commit/6f170106b361fe6776b5e5fda21f72b52936697a))
+* use latest api version 2026 ([#118](https://github.com/hesreallyhim/github-api-usage-monitor/issues/118)) ([e3f3b5d](https://github.com/hesreallyhim/github-api-usage-monitor/commit/e3f3b5dd6ae13d5733cbc299c7bf73b76285a3a3))
+
 ## [2.0.2](https://github.com/hesreallyhim/github-api-usage-monitor/compare/v2.0.1...v2.0.2) (2026-05-07)
 
 
