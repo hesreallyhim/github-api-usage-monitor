@@ -69538,7 +69538,7 @@ function isIgnoredRateLimitBucket(name) {
 /* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
 /* harmony export */   AD: () => (/* binding */ fetchRateLimit)
 /* harmony export */ });
-/* unused harmony exports isValidSample, parseRateLimitResponse */
+/* unused harmony exports GITHUB_API_VERSION, isValidSample, parseRateLimitResponse */
 /* harmony import */ var _types__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6141);
 /* harmony import */ var _buckets__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(4140);
 /* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(1798);
@@ -69559,6 +69559,7 @@ function isIgnoredRateLimitBucket(name) {
 // -----------------------------------------------------------------------------
 const RATE_LIMIT_URL = 'https://api.github.com/rate_limit';
 const USER_AGENT = 'github-api-usage-monitor';
+const GITHUB_API_VERSION = '2026-03-10';
 /**
  * Fetches rate limit data from GitHub API.
  *
@@ -69578,7 +69579,7 @@ async function fetchRateLimit(token) {
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/vnd.github+json',
                 'User-Agent': USER_AGENT,
-                'X-GitHub-Api-Version': '2022-11-28',
+                'X-GitHub-Api-Version': GITHUB_API_VERSION,
             },
         });
         clearTimeout(timeoutId);
@@ -70320,7 +70321,7 @@ var poll_log = __nccwpck_require__(2233);
  * Pure logic for handling 403/429 responses and gating poll cadence.
  *
  * Based on guidance in current docs at time of writing:
- * https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#exceeding-the-rate-limit
+ * https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10#exceeding-the-rate-limit
  */
 const rate_limit_control_MAX_SECONDARY_RETRIES = 5;
 const SECONDARY_DEFAULT_WAIT_MS = 60_000;
@@ -93323,7 +93324,9 @@ Builder.prototype.buildAttributesForStopNode = function (obj) {
       if (val === true && this.options.suppressBooleanAttributes) {
         attrStr += ' ' + cleanKey;
       } else {
-        attrStr += ' ' + cleanKey + '="' + val + '"'; // No encoding for stopNode
+        // stopNode content is raw, but the quote delimiter is always escaped
+        // so a quote in the value cannot break out of the attribute (see orderedJs2Xml attr_to_str)
+        attrStr += ' ' + cleanKey + '="' + escapeAttribute(val) + '"';
       }
     }
   } else {
@@ -93336,7 +93339,9 @@ Builder.prototype.buildAttributesForStopNode = function (obj) {
         if (val === true && this.options.suppressBooleanAttributes) {
           attrStr += ' ' + attr;
         } else {
-          attrStr += ' ' + attr + '="' + val + '"'; // No encoding for stopNode
+          // stopNode content is raw, but the quote delimiter is always escaped
+          // so a quote in the value cannot break out of the attribute (see orderedJs2Xml attr_to_str)
+          attrStr += ' ' + attr + '="' + escapeAttribute(val) + '"';
         }
       }
     }
@@ -93367,7 +93372,7 @@ Builder.prototype.buildObjectNode = function (val, key, attrStr, level) {
     if ((attrStr || attrStr === '') && val.indexOf('<') === -1) {
       return (this.indentate(level) + '<' + key + attrStr + piClosingChar + '>' + val + tagEndExp);
     } else if (this.options.commentPropName !== false && key === this.options.commentPropName && piClosingChar.length === 0) {
-      return this.indentate(level) + `<!--${val}-->` + this.newLine;
+      return this.indentate(level) + `<!--${safeComment(val)}-->` + this.newLine;
     } else {
       return (
         this.indentate(level) + '<' + key + attrStr + piClosingChar + this.tagEndChar +
@@ -133078,7 +133083,7 @@ class RequestError extends Error {
 
 
 // pkg/dist-src/version.js
-var dist_bundle_VERSION = "10.0.10";
+var dist_bundle_VERSION = "10.0.11";
 
 // pkg/dist-src/defaults.js
 var defaults_default = {
@@ -133235,9 +133240,10 @@ function toErrorMessage(data) {
   if (data instanceof ArrayBuffer) {
     return "Unknown error";
   }
-  if ("message" in data) {
-    const suffix = "documentation_url" in data ? ` - ${data.documentation_url}` : "";
-    return Array.isArray(data.errors) ? `${data.message}: ${data.errors.map((v) => JSON.stringify(v)).join(", ")}${suffix}` : `${data.message}${suffix}`;
+  if (typeof data === "object" && data !== null && "message" in data) {
+    const objectData = data;
+    const suffix = "documentation_url" in objectData ? ` - ${objectData.documentation_url}` : "";
+    return Array.isArray(objectData.errors) ? `${objectData.message}: ${objectData.errors.map((v) => JSON.stringify(v)).join(", ")}${suffix}` : `${objectData.message}${suffix}`;
   }
   return `Unknown error: ${JSON.stringify(data)}`;
 }
