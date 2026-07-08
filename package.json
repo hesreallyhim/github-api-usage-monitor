@@ -46,7 +46,7 @@
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.1.1",
     "@typescript-eslint/eslint-plugin": "^8.62.1",
     "@typescript-eslint/parser": "^8.62.1",
     "@vercel/ncc": "^0.44.1",
