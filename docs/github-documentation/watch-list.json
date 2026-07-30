@@ -4,7 +4,7 @@
       "file": "docs/github-documentation/rate-limit.md",
       "markdown_link": "https://docs.github.com/en/rest/rate-limit/rate-limit.md",
       "redirect_link": "https://docs.github.com/api/article/body?pathname=/en/rest/rate-limit/rate-limit",
-      "content_sha256": "c5e59f79d3e7ebfee88cf31cd6e289f63767c97b727f7823fe5629807fff36d3"
+      "content_sha256": "ba6148cc8ed3be062c62f4b8a233b4351c88fcd64acd5c035a3213ff14f33649"
     },
     {
       "file": "docs/github-documentation/rate-limits-for-the-rest-api.md",
