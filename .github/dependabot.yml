@@ -10,6 +10,13 @@ updates:
       prefix: 'chore'
       prefix-development: 'chore'
       include: 'scope'
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
 
   - package-ecosystem: 'github-actions'
     directory: '/'
@@ -18,3 +25,10 @@ updates:
     commit-message:
       prefix: 'chore'
       include: 'scope'
+    groups:
+      github-actions-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
