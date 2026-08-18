@@ -4,13 +4,13 @@
       "file": "docs/github-documentation/rate-limit.md",
       "markdown_link": "https://docs.github.com/en/rest/rate-limit/rate-limit.md",
       "redirect_link": "https://docs.github.com/api/article/body?pathname=/en/rest/rate-limit/rate-limit",
-      "content_sha256": "42392ef775d83c7ae79cbd3d49e7881e16728c23b003be137dc57e7c6993f79a"
+      "content_sha256": "ba6148cc8ed3be062c62f4b8a233b4351c88fcd64acd5c035a3213ff14f33649"
     },
     {
       "file": "docs/github-documentation/rate-limits-for-the-rest-api.md",
       "markdown_link": "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api.md",
       "redirect_link": "https://docs.github.com/api/article/body?pathname=/en/rest/using-the-rest-api/rate-limits-for-the-rest-api",
-      "content_sha256": "2eedb1d346385ae76fab8d9114b06e546aab690b8fdee3d52e59379537a42212"
+      "content_sha256": "731e54fb854063e0d8f3b8bafda9201e63867f231d90e08e021ac637b0b566ce"
     }
   ]
 }
