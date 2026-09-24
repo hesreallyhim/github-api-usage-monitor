@@ -9,7 +9,7 @@
 
 A GitHub Action that monitors GitHub API usage during a workflow job. It safely polls `/rate_limit` in a background process throughout the job, then renders a per-bucket usage summary in the step summary.
 
-GitHub Actions workflows may query the GitHub API and consume rate limits, but there's no built-in way to see how much. This action runs a lightweight background poller for the duration of your job and reports exactly which buckets were used, how much, and how close you are to the ceiling. Very helpful for anyone who is running workflows that interact with the GitHub API and want to monitor/analyze usage. It can track usage for any token that you pass in, including the default `GITHUB_TOKEN`.
+GitHub Actions workflows may query the GitHub API and consume rate limits, but there's no built-in way to see how much. This action runs a lightweight background poller for the duration of your job and estimates which buckets were used, how much, and how close you are to the ceiling. It is helpful for workflows that interact with the GitHub API and need to monitor or analyze usage. It can track usage for any token that you pass in, including the default `GITHUB_TOKEN`.
 
 ## Quick Start
 
@@ -95,6 +95,7 @@ Windows is not supported (the action will fail fast with a clear error).
 
 ## Limitations
 
+- **Snapshot authority** — GitHub documents the `x-ratelimit-*` headers on each REST API response as authoritative for the request that produced them, including when those headers disagree with `GET /rate_limit`. This action cannot observe response headers from other workflow steps; it estimates usage from periodic `/rate_limit` snapshots instead. Treat its report as an overview of the token's resource families, not as an authoritative record of each request.
 - **`GITHUB_TOKEN` limits** - the `/rate_limit` endpoint returns data that reflects the per-bucket limits for authenticated users (e.g. 5,000 requests per hour for `core`). However, the [documentation](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10#primary-rate-limit-for-github_token-in-github-actions) states that `GITHUB_TOKEN`, the token that is automatically generated for consumption by GitHub Actions, has a general rate limit of 1,000 requests per repository per hour (or 15,000 requests for GHEC). We have chosen to report the rate limit data that is returned from the `/rate_limit` API "transparently" - that is, we do not attempt to modify reports to accommodate the special limitations of `GITHUB_TOKEN`.
 - **Shared rate-limit pool** — rate limits are shared amongst all jobs in a repository that use the same token. If concurrent workflows run, usage from other jobs (that use the same token) will appear in the report.
 - **Polling resolution** — the poller is configured to run every 30 seconds by default, but this allows the possibility of a gap between the last poll and reset time for 60-second buckets such as `search`. In order to account for this, we have designed an _adaptive_ poller that targets polls near bucket resets and runs a few extra times; nevertheless, there's still an inherent ~3-5s uncertainty window which is unavoidable given the current design. Usage between the last poll and a reset boundary may be missed.
