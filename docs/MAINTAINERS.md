@@ -26,9 +26,9 @@ This file documents release and maintenance workflows for this repository.
 
 ## Bundled dependencies and generated chunks
 
-Consumers do not need to run `npm install`: runtime library code is bundled into the committed `dist/` files, even though the packages are listed under `devDependencies`.
+Runtime library code is bundled into the committed `dist/` files, even though the packages are listed under `devDependencies`.
 
-`@actions/artifact` depends on `@azure/storage-blob`, which lazily loads `apache-arrow` for Arrow-formatted blob listings. NCC packages that library code as a separate chunk, currently `dist/835.index.js`; the numeric filename is generated and may change. Keep emitted runtime chunks beside `post.js`, regenerate them with `npm run build:all`, and commit them rather than editing or deleting them manually.
+`@actions/artifact` depends on `@azure/storage-blob`, which lazily loads `apache-arrow` for Arrow-formatted blob listings. NCC packages that library code as a separate chunk, currently `dist/835.index.js`. NCC uses deterministic chunk IDs: identical build inputs reproduce the filename, while dependency-graph or bundler changes can rename it. Keep emitted runtime chunks beside `post.js`, regenerate them with `npm run build:all`, and commit them rather than editing or deleting them manually.
 
 This is separate from `supports-color`, an optional module excluded from the post bundle for reproducible builds. Its caller tolerates its absence; excluding it does not cause the Arrow chunk.
 
