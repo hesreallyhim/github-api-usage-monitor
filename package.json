@@ -7,7 +7,7 @@
   "scripts": {
     "build": "ncc build src/main.ts -o dist --license licenses.txt && mv dist/index.js dist/main.js",
     "build:pre": "ncc build src/pre.ts -o dist/pre-tmp && mv dist/pre-tmp/index.js dist/pre.js && rm -rf dist/pre-tmp",
-    "build:post": "ncc build src/post.ts -o dist/post-tmp && mv dist/post-tmp/index.js dist/post.js && rm -rf dist/post-tmp",
+    "build:post": "ncc build src/post.ts -o dist -e supports-color && mv dist/index.js dist/post.js",
     "build:poller": "ncc build src/poller-entry.ts -o dist/poller",
     "build:all": "npm run clean && npm run build && npm run build:pre && npm run build:post && npm run build:poller",
     "check-updates": "npx npm-check-updates --enginesNode --target semver",
@@ -50,7 +50,7 @@
     "@typescript-eslint/eslint-plugin": "^8.71.1",
     "@typescript-eslint/parser": "^8.71.1",
     "@vercel/ncc": "^0.45.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.3",
     "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
@@ -59,10 +59,10 @@
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.1",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   },
   "engines": {
-    "node": ">=24.0.0"
+    "node": "^24.0.0 || >=26.0.0"
   },
   "overrides": {
     "minimatch@5": {
