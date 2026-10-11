@@ -24,6 +24,14 @@ This file documents release and maintenance workflows for this repository.
 - Maintainers must review dependency upgrades for breaking changes.
 - If a dependency update is breaking, edit the PR title to include `!` (e.g., `chore(deps)!: bump react to v19`) or add a `BREAKING CHANGE:` note in the PR description.
 
+## Bundled dependencies and generated chunks
+
+Runtime library code is bundled into the committed `dist/` files, even though the packages are listed under `devDependencies`.
+
+`@actions/artifact` depends on `@azure/storage-blob`, which lazily loads `apache-arrow` for Arrow-formatted blob listings. NCC packages that library code as a separate chunk, currently `dist/835.index.js`. NCC uses deterministic chunk IDs: identical build inputs reproduce the filename, while dependency-graph or bundler changes can rename it. Keep emitted runtime chunks beside `post.js`, regenerate them with `npm run build:all`, and commit them rather than editing or deleting them manually.
+
+This is separate from `supports-color`, an optional module excluded from the post bundle for reproducible builds. Its caller tolerates its absence; excluding it does not cause the Arrow chunk.
+
 ## Release checklist
 
 
