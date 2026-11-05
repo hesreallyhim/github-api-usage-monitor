@@ -7,13 +7,15 @@ This document defines the supported runtime contract, dependency constraints, an
 
 ## 1. Node.js support contract
 
-- Supported Node.js versions: **>= 24**
+- Supported development/build Node.js versions: **24.x and >= 26**
 - Action runtime: `runs.using: node24`
-- Development and CI target: **Node 24.x**
+- Development baseline: **Node 24.x**
+- CI forward-compatibility target: **Node 26.x**
 
 **Rationale**
 - GitHub-hosted runners execute `node24`, which floats across the 24.x line.
 - We support a major version contract, not a specific patch.
+- Node 25 is excluded because it is end-of-life and unsupported by the current test toolchain.
 - A JavaScript action runtime major bump (for example `node20` to `node24`) is treated as a breaking change for release purposes because older GHES or self-hosted environments may not support the newer runtime.
 - Patch-level guarantees are neither tested nor enforced and are therefore not claimed.
 
@@ -22,7 +24,7 @@ This document defines the supported runtime contract, dependency constraints, an
 // package.json
 {
   "engines": {
-    "node": ">=24"
+    "node": "^24.0.0 || >=26.0.0"
   }
 }
 ```
@@ -48,7 +50,7 @@ This repository includes both `.nvmrc` and `.node-version` to support multiple N
 **Rationale**
 - `nvm` consumes `.nvmrc`.
 - Other tooling (asdf, mise, editors, some CI systems) consumes `.node-version`.
-- Using the major only aligns with the project’s Node support contract (`>=24` / `24.x`).
+- Using the major only selects the Node 24 development baseline; CI separately exercises forward compatibility on Node 26.
 - Keeping both files synchronized prevents environment drift across tools.
 
 **Enforcement**
@@ -111,7 +113,7 @@ engine-strict=true
 
 **Job structure**
 - `node-24` job runs the full suite (unit + integration) because integration tests are expensive.
-- The matrix job (24.x/25.x) runs unit tests only for faster feedback on newer majors.
+- The matrix job (24.x/26.x) runs unit tests only for faster feedback on newer majors.
 
 **Rationale**
 - CI guarantees that any commit merged to `main` is buildable, tested, and has up-to-date bundled output.
@@ -171,7 +173,7 @@ Release-As: 1.1.1
 
 ## Summary
 
-- Node support: `>=24`
+- Development/build Node support: `24.x` and `>=26`
 - Action runtime: `node24`
 - Dev default: `24.x`
 - Dependency enforcement: lockfile + `engine-strict=true`
