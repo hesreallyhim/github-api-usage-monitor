@@ -206,7 +206,9 @@ export function generateWarnings(state: ReducerState): string[] {
   // Anomalies
   const totalAnomalies = getReportableBuckets(state).reduce((sum, [, b]) => sum + b.anomalies, 0);
   if (totalAnomalies > 0) {
-    warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset)`);
+    warnings.push(
+      `${totalAnomalies} anomaly(ies) detected (used decreased without reset; regional counter variance may be the cause)`,
+    );
   }
 
   // Multiple window crosses (only for active buckets — idle buckets rotate windows harmlessly)
