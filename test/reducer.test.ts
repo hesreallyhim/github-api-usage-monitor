@@ -181,13 +181,27 @@ describe('updateBucket - anomalies', () => {
     expect(result.bucket.anomalies).toBe(3);
   });
 
-  it('updates last_used even on anomaly', () => {
+  it('preserves the last_used high-water mark on anomaly', () => {
     const bucket = makeBucket({ last_used: 100 });
     const sample = makeSample({ used: 50, reset: bucket.last_reset });
 
     const result = updateBucket(bucket, sample, 'ts');
 
-    expect(result.bucket.last_used).toBe(50);
+    expect(result.bucket.last_used).toBe(100);
+  });
+
+  it('counts only usage above the high-water mark after a regional counter rebound', () => {
+    let bucket = makeBucket({ last_used: 100, total_used: 50 });
+    const reset = bucket.last_reset;
+
+    let result = updateBucket(bucket, makeSample({ used: 90, reset }), 'ts1');
+    expect(result.anomaly).toBe(true);
+    expect(result.bucket.last_used).toBe(100);
+    bucket = result.bucket;
+
+    result = updateBucket(bucket, makeSample({ used: 105, reset }), 'ts2');
+    expect(result.delta).toBe(5);
+    expect(result.bucket.total_used).toBe(55);
   });
 });
 

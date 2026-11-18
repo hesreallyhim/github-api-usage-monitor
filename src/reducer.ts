@@ -22,9 +22,9 @@
  *     last_reset = reset
  *   else (same window):
  *     delta = used - last_used
- *     if delta < 0: anomaly (do not subtract)
+ *     if delta < 0: anomaly (do not subtract or lower the high-water mark)
  *     else: total_used += delta
- *   last_used = used
+ *   last_used = max(last_used, used) within a window
  */
 
 import type {
@@ -143,7 +143,10 @@ export function updateBucket(
     return {
       bucket: {
         last_reset: bucket.last_reset,
-        last_used: sample.used,
+        // GitHub documents that regional routing can make /rate_limit counters
+        // temporarily move backwards. Keep the high-water mark so a later
+        // rebound does not count already-observed usage a second time.
+        last_used: bucket.last_used,
         total_used: bucket.total_used,
         windows_crossed: bucket.windows_crossed,
         anomalies: bucket.anomalies + 1,
