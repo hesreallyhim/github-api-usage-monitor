@@ -75906,7 +75906,7 @@ function generateWarnings(state) {
     // Anomalies
     const totalAnomalies = getReportableBuckets(state).reduce((sum, [, b]) => sum + b.anomalies, 0);
     if (totalAnomalies > 0) {
-        warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset)`);
+        warnings.push(`${totalAnomalies} anomaly(ies) detected (used decreased without reset; regional counter variance may be the cause)`);
     }
     // Multiple window crosses (only for active buckets — idle buckets rotate windows harmlessly)
     for (const [name, bucket] of getReportableBuckets(state)) {
@@ -77018,9 +77018,9 @@ __webpack_async_result__();
  *     last_reset = reset
  *   else (same window):
  *     delta = used - last_used
- *     if delta < 0: anomaly (do not subtract)
+ *     if delta < 0: anomaly (do not subtract or lower the high-water mark)
  *     else: total_used += delta
- *   last_used = used
+ *   last_used = max(last_used, used) within a window
  */
 
 // -----------------------------------------------------------------------------
@@ -77105,7 +77105,10 @@ function updateBucket(bucket, sample, timestamp) {
         return {
             bucket: {
                 last_reset: bucket.last_reset,
-                last_used: sample.used,
+                // GitHub documents that regional routing can make /rate_limit counters
+                // temporarily move backwards. Keep the high-water mark so a later
+                // rebound does not count already-observed usage a second time.
+                last_used: bucket.last_used,
                 total_used: bucket.total_used,
                 windows_crossed: bucket.windows_crossed,
                 anomalies: bucket.anomalies + 1,
