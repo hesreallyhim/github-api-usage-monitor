@@ -32028,9 +32028,9 @@ function parseRateLimitResponse(raw) {
  *     last_reset = reset
  *   else (same window):
  *     delta = used - last_used
- *     if delta < 0: anomaly (do not subtract)
+ *     if delta < 0: anomaly (do not subtract or lower the high-water mark)
  *     else: total_used += delta
- *   last_used = used
+ *   last_used = max(last_used, used) within the same window
  */
 
 // -----------------------------------------------------------------------------
@@ -32111,11 +32111,12 @@ function updateBucket(bucket, sample, timestamp) {
     // Same window: calculate delta
     const delta = sample.used - bucket.last_used;
     if (delta < 0) {
-        // Anomaly: used decreased without reset change
+        // Regional routing can produce a lower counter for the same window. Keep
+        // the prior high-water mark so a later rebound is not counted as new use.
         return {
             bucket: {
                 last_reset: bucket.last_reset,
-                last_used: sample.used,
+                last_used: bucket.last_used,
                 total_used: bucket.total_used,
                 windows_crossed: bucket.windows_crossed,
                 anomalies: bucket.anomalies + 1,

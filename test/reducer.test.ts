@@ -181,13 +181,32 @@ describe('updateBucket - anomalies', () => {
     expect(result.bucket.anomalies).toBe(3);
   });
 
-  it('updates last_used even on anomaly', () => {
+  it('preserves the used high-water mark on anomaly', () => {
     const bucket = makeBucket({ last_used: 100 });
     const sample = makeSample({ used: 50, reset: bucket.last_reset });
 
     const result = updateBucket(bucket, sample, 'ts');
 
-    expect(result.bucket.last_used).toBe(50);
+    expect(result.bucket.last_used).toBe(100);
+  });
+
+  it('does not double-count a regional counter rebound', () => {
+    let bucket = makeBucket({ last_used: 100, total_used: 25 });
+    const reset = bucket.last_reset;
+
+    const lowerRegionalSample = updateBucket(bucket, makeSample({ used: 80, reset }), 'ts1');
+    expect(lowerRegionalSample.delta).toBe(0);
+    expect(lowerRegionalSample.bucket.total_used).toBe(25);
+    bucket = lowerRegionalSample.bucket;
+
+    const rebound = updateBucket(bucket, makeSample({ used: 100, reset }), 'ts2');
+    expect(rebound.delta).toBe(0);
+    expect(rebound.bucket.total_used).toBe(25);
+    bucket = rebound.bucket;
+
+    const genuineIncrease = updateBucket(bucket, makeSample({ used: 110, reset }), 'ts3');
+    expect(genuineIncrease.delta).toBe(10);
+    expect(genuineIncrease.bucket.total_used).toBe(35);
   });
 });
 

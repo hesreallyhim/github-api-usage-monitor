@@ -22,9 +22,9 @@
  *     last_reset = reset
  *   else (same window):
  *     delta = used - last_used
- *     if delta < 0: anomaly (do not subtract)
+ *     if delta < 0: anomaly (do not subtract or lower the high-water mark)
  *     else: total_used += delta
- *   last_used = used
+ *   last_used = max(last_used, used) within the same window
  */
 import type { ReducerState, BucketState, RateLimitSample, RateLimitResponse, RateLimitErrorKind } from './types';
 /**
